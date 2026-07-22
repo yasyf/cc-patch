@@ -1,0 +1,34 @@
+# golangci-lint v2 config. CI and the prek commit hook run this, and you can run it
+# by hand whenever it helps. `golangci-lint fmt`
+# applies the formatters; `golangci-lint run` applies the linters.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - contextcheck
+    - durationcheck
+    - errcheck
+    - errorlint
+    - gosec
+    - govet
+    - ineffassign
+    - prealloc
+    - revive
+    - staticcheck
+    - unused
+  settings:
+    gosec:
+      # This tool exists to read, re-sign, and shell out against a self-resolved
+      # binary path, so G204/G304 are inherent rather than smells.
+      excludes:
+        - G204
+        - G304
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports

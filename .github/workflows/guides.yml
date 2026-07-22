@@ -1,0 +1,13 @@
+name: Guides
+# Stub — all logic lives in yasyf/cc-guides. Edit fragments; CI renders.
+on:
+  push: {branches: [main]}
+  pull_request:
+  repository_dispatch: {types: [cc-guides-render]}
+  schedule: [{cron: "17 9 * * *"}]
+  workflow_dispatch:
+permissions: {contents: write}
+jobs:
+  guides:
+    uses: yasyf/cc-guides/.github/workflows/guides.yml@main
+    secrets: inherit
