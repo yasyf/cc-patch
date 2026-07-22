@@ -44,7 +44,7 @@ func Heal(ctx context.Context, inst claude.Install, p registry.Patch) (Result, e
 	if err := validate(inst, p, sites); err != nil {
 		return Result{}, fmt.Errorf("heal %s: Claude-derived sites rejected: %w", p.ID, err)
 	}
-	if err := persist(inst, p, sites); err != nil {
+	if err := patcher.PersistSites(inst.Version, p.ID, sites); err != nil {
 		return Result{}, err
 	}
 	out, err = patcher.Apply(ctx, inst, p)
@@ -170,12 +170,4 @@ func validate(inst claude.Install, p registry.Patch, sites []registry.Site) erro
 		}
 	}
 	return nil
-}
-
-func persist(inst claude.Install, p registry.Patch, sites []registry.Site) error {
-	saved := make([]store.Site, len(sites))
-	for i, s := range sites {
-		saved[i] = store.Site{Anchor: s.Anchor, Find: s.Find, Drop: s.Drop}
-	}
-	return store.Put(inst.Version, p.ID, saved)
 }

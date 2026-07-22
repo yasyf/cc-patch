@@ -71,7 +71,21 @@ func Apply(ctx context.Context, inst claude.Install, p registry.Patch) (Outcome,
 	if err != nil {
 		return Outcome{}, fmt.Errorf("%w: %s (derived sites): %w", ErrDrift, p.ID, err)
 	}
+	// Persist so status and later applies use these sites — the derivation anchor
+	// is itself blanked by the patch and cannot be re-derived once applied.
+	if err := PersistSites(inst.Version, p.ID, sites); err != nil {
+		return Outcome{}, err
+	}
 	return Outcome{PatchID: p.ID, Version: inst.Version, Changed: res.Changed, Derived: true, Result: res}, nil
+}
+
+// PersistSites records derived sites for a version+patch so later runs reuse them.
+func PersistSites(version, patchID string, sites []registry.Site) error {
+	saved := make([]store.Site, len(sites))
+	for i, s := range sites {
+		saved[i] = store.Site{Anchor: s.Anchor, Find: s.Find, Drop: s.Drop}
+	}
+	return store.Put(version, patchID, saved)
 }
 
 // Status resolves one patch against the install without modifying it: pinned
@@ -87,11 +101,13 @@ func Status(inst claude.Install, p registry.Patch) (Outcome, error) {
 		return Outcome{PatchID: p.ID, Version: inst.Version, Derived: true, Result: res}, nil
 	}
 	res, err := binpatch.Status(inst.Binary, p.SegmentName, registry.Substitutions(p.Sites))
-	if err == nil {
-		return Outcome{PatchID: p.ID, Version: inst.Version, Result: res}, nil
-	}
-	if p.Derive == nil {
+	if err != nil {
 		return Outcome{}, err
+	}
+	// Missing pinned sites mean drift; re-locate structurally so status reflects
+	// what apply would do instead of falsely reporting "drifted".
+	if !hasMissing(res) || p.Derive == nil {
+		return Outcome{PatchID: p.ID, Version: inst.Version, Result: res}, nil
 	}
 	sites, derr := deriveSites(inst, p)
 	if derr != nil {
@@ -102,6 +118,15 @@ func Status(inst claude.Install, p registry.Patch) (Outcome, error) {
 		return Outcome{}, fmt.Errorf("%w: %s (derived sites): %w", ErrDrift, p.ID, err)
 	}
 	return Outcome{PatchID: p.ID, Version: inst.Version, Derived: true, Result: res}, nil
+}
+
+func hasMissing(r binpatch.Result) bool {
+	for _, s := range r.Sites {
+		if s.State == binpatch.StateMissing {
+			return true
+		}
+	}
+	return false
 }
 
 func deriveSites(inst claude.Install, p registry.Patch) ([]registry.Site, error) {

@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1]
+
+### Fixed
+- `apply` now persists structurally-derived sites per version, so `status` and
+  later applies recognize a derived patch instead of reporting `drifted`. The
+  derivation anchor is blanked by the patch itself and cannot be re-derived once
+  applied, so without the persisted sites a derived patch looked unpatched.
+- `status` falls through to derivation when the pinned literals are missing,
+  matching what `apply` does.
+
 ## [0.1.0]
 
 ### Added
@@ -20,5 +30,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install-daemons` / `uninstall-daemons` — launchd agents that re-patch on
   auto-update (WatchPaths) and heal daily (StartCalendarInterval).
 
-[Unreleased]: https://github.com/yasyf/cc-patch/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/yasyf/cc-patch/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/yasyf/cc-patch/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/yasyf/cc-patch/releases/tag/v0.1.0
