@@ -6,6 +6,7 @@ fragments = [
   "cc-skills:writing-plans",
   "cc-skills:ccx",
   "cc-patch-style",
+  "releases",
   "cc-patch-hook-style",
   "cc-skills:version-control",
 ]

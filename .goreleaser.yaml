@@ -1,0 +1,89 @@
+# goreleaser v2 — the canonical base config (pure Go, CGO_ENABLED=0). Layer
+# recipes on top (zig CGO, build tags, universal binaries, embed-prebuild) per
+# reference/go-ci-and-release.md. Validate locally: goreleaser release --snapshot --clean
+version: 2
+
+project_name: cc-patch
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: cc-patch
+    main: ./cmd/cc-patch
+    binary: cc-patch
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/yasyf/cc-patch/internal/version.Version={{ .Version }}
+      - -X github.com/yasyf/cc-patch/internal/version.Commit={{ .Commit }}
+      - -X github.com/yasyf/cc-patch/internal/version.Date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: cc-patch
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+# Sign + notarize the darwin binaries with our Apple Developer ID — but only when the
+# MACOS_* secrets are set, so repos without Apple creds still release (unsigned) unchanged.
+# goreleaser's built-in quill signer is pure Go and runs on the linux runner (no macOS runner).
+# REQUIRES a full-chain p12 (leaf + Developer ID intermediate + Apple Root CA): without the
+# root, quill emits an unsatisfiable `certificate root[…6.2.6…]` designated requirement that
+# macOS SIGKILLs at exec. Bare-binary only (no .app bundle). See reference/go-ci-and-release.md.
+notarize:
+  macos:
+    - enabled: '{{ if envOrDefault "MACOS_SIGN_P12" "" }}true{{ else }}false{{ end }}'
+      ids:
+        - cc-patch
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY }}"
+        wait: true
+        timeout: 20m
+
+checksum:
+  name_template: checksums.txt
+
+# Default distribution: a native Homebrew cask published by goreleaser itself to the
+# shared tap (no render/publish step). A cask ships the prebuilt binary as-is. Switch to a
+# formula (native `brews:`, or a rendered `.rb` via the render-formula action) only when you
+# need `brew services`, a runtime `depends_on`, or conditional install — see
+# reference/go-ci-and-release.md § Formula recipe.
+homebrew_casks:
+  - name: cc-patch
+    binaries:
+      - cc-patch
+    repository:
+      owner: yasyf
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: https://github.com/yasyf/cc-patch
+    description: Fast mode for Claude Code's delegated agents, re-applied automatically on every update.
+    # Strip the quarantine attribute so the (notarized, or unsigned) binary runs on first launch.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/cc-patch"]
+          end
+
+release:
+  prerelease: auto
+  # Idempotent re-runs: overwrite same-named assets instead of erroring (HTTP 422). The shared
+  # release-go.yml retries `goreleaser release --clean` past flaky notarization, and a rare
+  # mid-publish failure would otherwise 422 on the retry's asset re-upload.
+  replace_existing_artifacts: true
+
+changelog:
+  use: github

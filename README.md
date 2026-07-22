@@ -13,15 +13,24 @@ the binary.
 ## Get started
 
 ```bash
-git clone https://github.com/yasyf/cc-patch
-cd cc-patch
-task build   # -> ./bin/cc-patch
+brew install yasyf/tap/cc-patch
 
-./bin/cc-patch status   # is the installed Claude Code binary patched?
+cc-patch status   # is the installed Claude Code binary patched?
 ```
 
 `status` reads `~/.local/bin/claude`, resolves it to the versioned binary, and
 reports whether each registered patch is applied — it never writes.
+
+<details>
+<summary>From a clone</summary>
+
+```bash
+git clone https://github.com/yasyf/cc-patch
+cd cc-patch
+task build   # -> ./bin/cc-patch
+```
+
+</details>
 
 ## Apply the patch
 

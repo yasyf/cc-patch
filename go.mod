@@ -4,7 +4,7 @@ go 1.26.3
 
 require (
 	github.com/spf13/cobra v1.10.2
-	github.com/yasyf/daemonkit v0.0.0-00010101000000-000000000000
+	github.com/yasyf/daemonkit v0.5.0
 )
 
 require (
@@ -17,5 +17,3 @@ require (
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/term v0.45.0 // indirect
 )
-
-replace github.com/yasyf/daemonkit => ../daemonkit
