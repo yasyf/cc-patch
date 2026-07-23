@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Packs.** `cc-patch install <builtin>` installs a pack shipped in the binary by
+  name; `cc-patch install <owner>/<repo>` clones a git repo carrying a
+  `cc-patch/pack.toml`. `uninstall`/`update`/`list` manage them, and installed packs
+  are covered by `apply --all`, `status`, and the launchd agents. The pack format is
+  declarative — pinned sites, a Go RE2 `derive` DSL (named-capture `find`/`drop`,
+  cross-site `bind` + `{{name}}` interpolation), and a heal prompt.
+- Homebrew registers the launchd agents automatically on `brew install`/`brew
+  upgrade`, so `install-daemons` is no longer a manual step.
+
+### Changed
+- The fastmode patch is now an opt-in builtin pack rather than always-applied.
+  Install it with `cc-patch install fastmode`.
+
 ## [0.1.1]
 
 ### Fixed

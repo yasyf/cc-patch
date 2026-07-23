@@ -3,6 +3,7 @@ module github.com/yasyf/cc-patch
 go 1.26.3
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/spf13/cobra v1.10.2
 	github.com/yasyf/daemonkit v0.5.0
 )

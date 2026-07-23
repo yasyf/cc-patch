@@ -2,10 +2,12 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
 
+	"github.com/yasyf/cc-patch/internal/patchset"
 	"github.com/yasyf/cc-patch/internal/registry"
 	"github.com/yasyf/cc-patch/internal/version"
 )
@@ -26,25 +28,39 @@ func NewRootCmd() *cobra.Command {
 		newRestoreCmd(),
 		newHealCmd(),
 		newListCmd(),
+		newInstallCmd(),
+		newUninstallCmd(),
+		newUpdateCmd(),
 		newInstallDaemonsCmd(),
 		newUninstallDaemonsCmd(),
 	)
 	return root
 }
 
-// selectPatches resolves the patch set a command operates on from its flags.
-func selectPatches(all bool, id string) ([]registry.Patch, error) {
+// selectPatches resolves the patch set a command operates on from its flags,
+// returning any per-pack load errors alongside the selected patches.
+func selectPatches(ctx context.Context, all bool, id string) ([]registry.Patch, []error, error) {
 	if id != "" {
-		p, err := registry.Find(id)
+		p, err := patchset.Find(ctx, id)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		return []registry.Patch{p}, nil
+		return []registry.Patch{p}, nil, nil
 	}
 	if all {
-		return registry.All(), nil
+		patches, warns, err := patchset.Load(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		return patches, warns, nil
 	}
-	return nil, fmt.Errorf("specify --all or --id <patch> (see `cc-patch list`)")
+	return nil, nil, fmt.Errorf("specify --all or --id <patch> (see `cc-patch list`)")
+}
+
+func warn(cmd *cobra.Command, errs []error) {
+	for _, e := range errs {
+		cmd.PrintErrln("warning:", e)
+	}
 }
 
 func addSelectFlags(cmd *cobra.Command, all *bool, id *string) {

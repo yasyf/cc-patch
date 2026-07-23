@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Site is a persisted patch site. []byte fields JSON-encode as base64, so the
@@ -19,9 +20,30 @@ type Site struct {
 	Drop   []byte `json:"drop"`
 }
 
-// State is the on-disk document: derived sites keyed by "<version>/<patchID>".
+// State is the on-disk document: heal-derived sites keyed by
+// "<version>/<patchID>", plus the installed packs.
 type State struct {
 	Overrides map[string][]Site `json:"overrides"`
+	Packs     []InstalledPack   `json:"packs"`
+}
+
+// InstalledPack records a pack cc-patch has installed: a builtin (embedded in the
+// binary, identified by Name) or a remote repo cloned under PacksDir.
+type InstalledPack struct {
+	Name    string `json:"name,omitempty"`
+	Builtin bool   `json:"builtin,omitempty"`
+	Owner   string `json:"owner,omitempty"`
+	Repo    string `json:"repo,omitempty"`
+	Ref     string `json:"ref,omitempty"`
+	Commit  string `json:"commit,omitempty"`
+}
+
+// Namespace is the pack's identity: its builtin name, or "<owner>/<repo>".
+func (p InstalledPack) Namespace() string {
+	if p.Builtin {
+		return p.Name
+	}
+	return p.Owner + "/" + p.Repo
 }
 
 func key(version, patchID string) string { return version + "/" + patchID }
@@ -33,6 +55,15 @@ func Dir() (string, error) {
 		return "", fmt.Errorf("resolve home dir: %w", err)
 	}
 	return filepath.Join(home, ".local", "share", "cc-patch"), nil
+}
+
+// PacksDir is where installed pack repos live (Dir()/packs).
+func PacksDir() (string, error) {
+	dir, err := Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "packs"), nil
 }
 
 func path() (string, error) {
@@ -79,6 +110,77 @@ func Put(version, patchID string, sites []Site) error {
 		return err
 	}
 	s.Overrides[key(version, patchID)] = sites
+	return save(s)
+}
+
+// Packs returns the installed packs.
+func Packs() ([]InstalledPack, error) {
+	s, err := Load()
+	if err != nil {
+		return nil, err
+	}
+	return s.Packs, nil
+}
+
+// AddPack records an installed pack, replacing any prior entry with the same
+// namespace.
+func AddPack(p InstalledPack) error {
+	s, err := Load()
+	if err != nil {
+		return err
+	}
+	for i, existing := range s.Packs {
+		if existing.Namespace() == p.Namespace() {
+			s.Packs[i] = p
+			return save(s)
+		}
+	}
+	s.Packs = append(s.Packs, p)
+	return save(s)
+}
+
+// RemovePack drops the installed-pack entry with the given namespace.
+func RemovePack(namespace string) error {
+	s, err := Load()
+	if err != nil {
+		return err
+	}
+	kept := make([]InstalledPack, 0, len(s.Packs))
+	for _, p := range s.Packs {
+		if p.Namespace() == namespace {
+			continue
+		}
+		kept = append(kept, p)
+	}
+	s.Packs = kept
+	return save(s)
+}
+
+// RemoveOverridesForPatchIDs drops every heal override for the given patch ids
+// across all versions. Keys are "<version>/<patchID>" (versions carry no slash),
+// so matching the exact patchID avoids conflating a builtin namespace ("fastmode")
+// with a remote whose owner shares that name ("fastmode/repo").
+func RemoveOverridesForPatchIDs(ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	s, err := Load()
+	if err != nil {
+		return err
+	}
+	want := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	for k := range s.Overrides {
+		if _, patchID, ok := strings.Cut(k, "/"); ok && want[patchID] {
+			delete(s.Overrides, k)
+		}
+	}
+	return save(s)
+}
+
+func save(s State) error {
 	dir, err := Dir()
 	if err != nil {
 		return err

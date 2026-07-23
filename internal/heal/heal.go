@@ -3,6 +3,7 @@
 package heal
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -35,6 +36,9 @@ func Heal(ctx context.Context, inst claude.Install, p registry.Patch) (Result, e
 		return Result{Outcome: out}, nil
 	}
 	if !errors.Is(err, patcher.ErrDrift) {
+		return Result{}, err
+	}
+	if p.HealPrompt == "" {
 		return Result{}, err
 	}
 	sites, rerr := rederive(ctx, inst, p)
@@ -100,22 +104,21 @@ func rederive(ctx context.Context, inst claude.Install, p registry.Patch) ([]reg
 	return sites, nil
 }
 
+// prompt renders the pack author's HealPrompt (the task description) framed by the
+// engine-owned base64 output contract that extractJSON/rederivedSite depend on.
 func prompt(bundlePath string, p registry.Patch) string {
 	return fmt.Sprintf(`The file %s is a minified JavaScript bundle from Claude Code.
 
-Locate the two code sites that gate fast (priority-tier) mode, then output edits that neutralize each gate's "the caller explicitly requested fast mode" requirement while leaving the model-eligibility check intact.
-
-Site 1 (service tier): a boolean AND chain ending in `+"`"+`&&!!<opts>.fastMode)`+"`"+` immediately followed by an assignment `+"`"+`<gn>="fast"`+"`"+`.
-Site 2 (fast-mode beta header): an assignment `+"`"+`<ne>=<gate chain>&&!!<opts>.fastMode`+"`"+` whose gate chain contains a model-eligibility call.
+%s
 
 For each site produce:
-- find: the minimal byte substring, unique in the file, that spans the gate and contains the fragment to blank.
-- drop: the `+"`"+`&&!!<opts>.fastMode`+"`"+` fragment within find (leading && included) to blank to spaces.
+- find: the minimal byte substring, unique in the file, that spans the site and contains the fragment to blank.
+- drop: a contiguous substring within find to blank to spaces; blanking it must be length-neutral (find and drop are the same length change of zero).
 
-Use your tools to grep the file and verify each find matches exactly once. Output ONLY a JSON array (no prose), where find and drop are base64-encoded raw bytes:
-[{"anchor":"service tier","find":"<base64>","drop":"<base64>"},{"anchor":"beta header","find":"<base64>","drop":"<base64>"}]
+Use your tools to grep the file and verify each find matches exactly once. Output ONLY a JSON array (no prose), where find and drop are base64-encoded raw bytes, one object per site:
+[{"anchor":"<label>","find":"<base64>","drop":"<base64>"}]
 
-Patch id: %s.`, bundlePath, p.ID)
+Patch id: %s.`, bundlePath, p.HealPrompt, p.ID)
 }
 
 func runClaude(ctx context.Context, launcher, prompt string) (string, error) {
@@ -160,6 +163,13 @@ func truncate(s string, n int) string {
 }
 
 func validate(inst claude.Install, p registry.Patch, sites []registry.Site) error {
+	// Claude-derived sites are untrusted: reject any drop that is not within its
+	// find before Substitutions calls blank(), which panics on a bad pair.
+	for i, s := range sites {
+		if !bytes.Contains(s.Find, s.Drop) {
+			return fmt.Errorf("site %d: drop %q is not within find %q", i, s.Drop, s.Find)
+		}
+	}
 	res, err := binpatch.Status(inst.Binary, p.SegmentName, registry.Substitutions(sites))
 	if err != nil {
 		return err

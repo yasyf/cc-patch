@@ -1,0 +1,47 @@
+schema = 1
+
+[[patch]]
+id      = "delegated-agents"
+summary = "Fast mode for delegated Opus agents (subagents, teammates, workflow branches)"
+segment = "__BUN"
+
+# Site 1 — service tier. Blank the "&&!!<opts>.fastMode" caller-requested-fastmode
+# clause while keeping the BT(_) model-eligibility gate (still excludes sonnet/fable).
+[[patch.site]]
+anchor = "service tier"
+find   = '&&BT(_)&&!!Dn.fastMode)gn="fast"'
+drop   = '&&!!Dn.fastMode'
+
+# Site 2 — fast-mode beta header.
+[[patch.site]]
+anchor = "beta header"
+find   = 'ne=vl()&&UO()&&!pAe()&&BT(_)&&!!i.fastMode'
+drop   = '&&!!i.fastMode'
+
+# Structural derive — tolerates the minifier renaming locals across a Claude update.
+# Site 1 captures the shared eligibility-gate chain as "gate" and exports it; site 2
+# pins off that exact chain via {{gate}} so both sites stay the same gate.
+[[patch.derive]]
+anchor  = "service tier"
+pattern = '(?P<gate>(?:\w+\(\)&&){2}!\w+\(\)&&\w+\(\w+\))(?P<drop>&&!!\w+\.fastMode)\)\w+="fast"'
+find    = 0
+drop    = "drop"
+bind    = ["gate"]
+
+[[patch.derive]]
+anchor  = "beta header"
+pattern = '={{gate}}(?P<drop>&&!!\w+\.fastMode)'
+find    = 0
+drop    = "drop"
+
+[patch.heal]
+prompt = """
+Locate the two code sites that gate fast (priority-tier) mode, then output edits that
+neutralize each gate's "the caller explicitly requested fast mode" requirement while
+leaving the model-eligibility check intact.
+
+Site 1 (service tier): a boolean AND chain ending in `&&!!<opts>.fastMode)` immediately
+followed by an assignment `<gn>="fast"`. Blank the `&&!!<opts>.fastMode` fragment.
+Site 2 (fast-mode beta header): an assignment `<ne>=<gate chain>&&!!<opts>.fastMode` whose
+gate chain contains a model-eligibility call. Blank the trailing `&&!!<opts>.fastMode`.
+"""

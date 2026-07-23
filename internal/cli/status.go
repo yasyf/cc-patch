@@ -6,7 +6,7 @@ import (
 	"github.com/yasyf/cc-patch/internal/binpatch"
 	"github.com/yasyf/cc-patch/internal/claude"
 	"github.com/yasyf/cc-patch/internal/patcher"
-	"github.com/yasyf/cc-patch/internal/registry"
+	"github.com/yasyf/cc-patch/internal/patchset"
 )
 
 func newStatusCmd() *cobra.Command {
@@ -19,7 +19,12 @@ func newStatusCmd() *cobra.Command {
 				return err
 			}
 			cmd.Printf("claude %s at %s\n", inst.Version, inst.Binary)
-			for _, p := range registry.All() {
+			patches, warns, err := patchset.Load(cmd.Context())
+			if err != nil {
+				return err
+			}
+			warn(cmd, warns)
+			for _, p := range patches {
 				out, err := patcher.Status(inst, p)
 				if err != nil {
 					cmd.Printf("  %s  error: %v\n", p.ID, err)

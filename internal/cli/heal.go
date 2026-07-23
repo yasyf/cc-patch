@@ -18,10 +18,11 @@ func newHealCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			patches, err := selectPatches(all, id)
+			patches, warns, err := selectPatches(cmd.Context(), all, id)
 			if err != nil {
 				return err
 			}
+			warn(cmd, warns)
 			for _, p := range patches {
 				res, err := heal.Heal(cmd.Context(), inst, p)
 				if err != nil {
