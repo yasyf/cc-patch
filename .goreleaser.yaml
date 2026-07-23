@@ -70,13 +70,12 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: https://github.com/yasyf/cc-patch
     description: Fast mode for Claude Code's delegated agents, re-applied automatically on every update.
-    # Strip quarantine, then register the launchd agents. postflight fires on install and
-    # upgrade, so each upgrade re-points the agents at the new versioned Caskroom binary.
+    # Register the launchd agents after install and upgrade so each upgrade re-points
+    # them at the new versioned Caskroom binary.
     hooks:
       post:
         install: |
           if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/cc-patch"]
             system_command "#{staged_path}/cc-patch", args: ["install-daemons"], must_succeed: false
           end
 
