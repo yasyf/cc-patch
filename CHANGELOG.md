@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.0] - 2026-07-23
 
 ### Changed
+- Pin daemonkit v0.9.0 for the fleet-wide exact runtime hard cut.
 - `~/.local/share/cc-patch/state.json` is now one exact, fingerprinted schema-v1
   envelope. Present legacy, partial, extended, stale, or corrupt documents fail
   loudly instead of being repaired or treated as an empty store.
