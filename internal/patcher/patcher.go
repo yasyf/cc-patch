@@ -67,14 +67,14 @@ func Apply(ctx context.Context, inst claude.Install, p registry.Patch) (Outcome,
 	if derr != nil {
 		return Outcome{}, fmt.Errorf("%w: %s: %w", ErrDrift, p.ID, derr)
 	}
+	// The patch blanks its own derivation anchor, so its sites must be durable
+	// before the binary changes.
+	if err := PersistSites(inst.Version, p.ID, sites); err != nil {
+		return Outcome{}, err
+	}
 	res, err = binpatch.Apply(ctx, inst.Binary, inst.Backup(), p.SegmentName, registry.Substitutions(sites))
 	if err != nil {
 		return Outcome{}, fmt.Errorf("%w: %s (derived sites): %w", ErrDrift, p.ID, err)
-	}
-	// Persist so status and later applies use these sites — the derivation anchor
-	// is itself blanked by the patch and cannot be re-derived once applied.
-	if err := PersistSites(inst.Version, p.ID, sites); err != nil {
-		return Outcome{}, err
 	}
 	return Outcome{PatchID: p.ID, Version: inst.Version, Changed: res.Changed, Derived: true, Result: res}, nil
 }

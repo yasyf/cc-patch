@@ -86,7 +86,10 @@ func TestInstallFromLocalRepo(t *testing.T) {
 		t.Errorf("pack subtree not copied: %v", err)
 	}
 
-	loaded, errs := Load()
+	loaded, errs, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
 	if len(errs) != 0 {
 		t.Fatalf("Load errors: %v", errs)
 	}
@@ -202,7 +205,10 @@ func TestInstallBuiltin(t *testing.T) {
 	if len(patches) != 1 || patches[0].ID != "fastmode/delegated-agents" {
 		t.Fatalf("builtin patches = %+v", patches)
 	}
-	loaded, errs := Load()
+	loaded, errs, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
 	if len(errs) != 0 {
 		t.Fatalf("Load errors: %v", errs)
 	}
@@ -218,6 +224,27 @@ func TestInstallBuiltin(t *testing.T) {
 	}
 	if len(packs) != 0 {
 		t.Errorf("packs after builtin uninstall = %+v", packs)
+	}
+}
+
+func TestLoadTreatsStoreCorruptionAsHardError(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir, err := store.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "state.json"), []byte(`{"overrides":{},"packs":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	patches, warnings, err := Load()
+	if err == nil {
+		t.Fatal("Load accepted a legacy state document")
+	}
+	if patches != nil || warnings != nil {
+		t.Fatalf("Load returned patches=%v warnings=%v with hard state error", patches, warnings)
 	}
 }
 

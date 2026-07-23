@@ -68,23 +68,23 @@ func Remove(owner, repo string) error {
 	if err != nil {
 		return err
 	}
+	// Commit the authoritative removal before deleting inert pack bytes. If
+	// cleanup fails, an unreferenced directory is safe; the inverse leaves live
+	// state pointing at missing code.
+	if err := store.RemovePack(p.Namespace(), ids); err != nil {
+		return err
+	}
 	if err := os.RemoveAll(dir); err != nil {
 		return fmt.Errorf("remove pack dir %q: %w", dir, err)
 	}
-	if err := store.RemovePack(p.Namespace()); err != nil {
-		return err
-	}
-	return store.RemoveOverridesForPatchIDs(ids)
+	return nil
 }
 
 // RemoveBuiltin drops a builtin pack's record and its heal overrides. The pack
 // stays embedded in the binary; only its installed status is cleared.
 func RemoveBuiltin(name string) error {
 	ids := installedPatchIDs(store.InstalledPack{Name: name, Builtin: true})
-	if err := store.RemovePack(name); err != nil {
-		return err
-	}
-	return store.RemoveOverridesForPatchIDs(ids)
+	return store.RemovePack(name, ids)
 }
 
 // installedPatchIDs best-effort loads a pack's patch ids so its heal overrides can
@@ -101,12 +101,12 @@ func installedPatchIDs(p store.InstalledPack) []string {
 	return ids
 }
 
-// Load compiles every installed pack's patches, isolating a bad pack's error
-// so one failure never aborts the whole load.
-func Load() ([]registry.Patch, []error) {
+// Load compiles every installed pack's patches. An invalid pack remains an
+// isolated warning; an invalid authoritative store is a hard error.
+func Load() ([]registry.Patch, []error, error) {
 	packs, err := store.Packs()
 	if err != nil {
-		return nil, []error{err}
+		return nil, nil, err
 	}
 	var patches []registry.Patch
 	var errs []error
@@ -118,7 +118,7 @@ func Load() ([]registry.Patch, []error) {
 		}
 		patches = append(patches, loaded...)
 	}
-	return patches, errs
+	return patches, errs, nil
 }
 
 func installFrom(ctx context.Context, cloneURL, owner, repo, ref string, confirm func([]registry.Patch) (bool, error)) ([]registry.Patch, bool, error) {

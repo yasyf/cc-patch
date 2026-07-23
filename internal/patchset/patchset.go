@@ -11,9 +11,12 @@ import (
 )
 
 // Load returns the merged patch set (built-ins plus every installed pack),
-// the per-pack load errors, and a hard error only on an ID collision.
+// per-pack load errors, and a hard error for store failure or an ID collision.
 func Load(_ context.Context) ([]registry.Patch, []error, error) {
-	packs, errs := packstore.Load()
+	packs, errs, err := packstore.Load()
+	if err != nil {
+		return nil, nil, err
+	}
 	merged, err := merge(registry.All(), packs)
 	if err != nil {
 		return nil, errs, err

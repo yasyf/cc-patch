@@ -23,7 +23,11 @@ func newListCmd() *cobra.Command {
 			for _, p := range patches {
 				cmd.Printf("%s  (%d sites in %s)\n    %s\n", p.ID, len(p.Sites), p.SegmentName, p.Summary)
 			}
-			if avail := uninstalledBuiltins(); len(avail) > 0 {
+			avail, err := uninstalledBuiltins()
+			if err != nil {
+				return err
+			}
+			if len(avail) > 0 {
 				cmd.Printf("\nAvailable builtins (install by name): %s\n", strings.Join(avail, ", "))
 			}
 			return nil
@@ -31,10 +35,10 @@ func newListCmd() *cobra.Command {
 	}
 }
 
-func uninstalledBuiltins() []string {
+func uninstalledBuiltins() ([]string, error) {
 	packs, err := store.Packs()
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	installed := map[string]bool{}
 	for _, p := range packs {
@@ -48,5 +52,5 @@ func uninstalledBuiltins() []string {
 			avail = append(avail, name)
 		}
 	}
-	return avail
+	return avail, nil
 }

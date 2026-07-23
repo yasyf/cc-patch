@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-23
+
+### Changed
+- `~/.local/share/cc-patch/state.json` is now one exact, fingerprinted schema-v1
+  envelope. Present legacy, partial, extended, stale, or corrupt documents fail
+  loudly instead of being repaired or treated as an empty store.
+- State updates now use cross-process serialization and a same-directory,
+  fsync-backed atomic replacement. Pack removal and its override pruning commit
+  together, and structurally derived sites become durable before their patch
+  changes the Claude binary.
+
 ## [0.3.0] - 2026-07-23
 
 ### Added
@@ -55,7 +66,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install-daemons` / `uninstall-daemons` — launchd agents that re-patch on
   auto-update (WatchPaths) and heal daily (StartCalendarInterval).
 
-[Unreleased]: https://github.com/yasyf/cc-patch/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/yasyf/cc-patch/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/yasyf/cc-patch/compare/v0.4.0...v0.5.0
+[0.3.0]: https://github.com/yasyf/cc-patch/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/yasyf/cc-patch/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/yasyf/cc-patch/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/yasyf/cc-patch/releases/tag/v0.1.0
