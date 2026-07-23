@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-23
+
 ### Added
 - **Packs.** `cc-patch install <builtin>` installs a pack shipped in the binary by
   name; `cc-patch install <owner>/<repo>` clones a git repo carrying a
@@ -44,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install-daemons` / `uninstall-daemons` — launchd agents that re-patch on
   auto-update (WatchPaths) and heal daily (StartCalendarInterval).
 
-[Unreleased]: https://github.com/yasyf/cc-patch/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/yasyf/cc-patch/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/yasyf/cc-patch/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/yasyf/cc-patch/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/yasyf/cc-patch/releases/tag/v0.1.0
