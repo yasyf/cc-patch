@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-23
+
+### Changed
+- Pin daemonkit v0.10.0 as the exact fleet runtime dependency.
+
 ## [0.5.0] - 2026-07-23
 
 ### Changed

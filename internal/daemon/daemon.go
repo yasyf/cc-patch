@@ -28,8 +28,13 @@ func Agents(inst claude.Install) ([]service.Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	program, err := service.CanonicalExecutable()
+	if err != nil {
+		return nil, fmt.Errorf("resolve current executable: %w", err)
+	}
 	watch := service.Agent{
 		Label:         watchLabel,
+		Program:       program,
 		Args:          []string{"apply", "--all"},
 		LogPath:       filepath.Join(logDir, "watch.log"),
 		RestartPolicy: service.NoRestart,
@@ -37,6 +42,7 @@ func Agents(inst claude.Install) ([]service.Agent, error) {
 	}
 	heal := service.Agent{
 		Label:                 healLabel,
+		Program:               program,
 		Args:                  []string{"heal", "--all"},
 		LogPath:               filepath.Join(logDir, "heal.log"),
 		RestartPolicy:         service.NoRestart,
