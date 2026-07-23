@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-23
+
+### Added
+- **tasktools builtin.** `cc-patch install tasktools` restores the session task
+  tools — `TaskCreate`/`TaskUpdate`/`TaskGet`/`TaskList` and the task-list prompt
+  attachment — that a server-side statsig killswitch (`tengu_vellum_ash`) hides on
+  some models, such as Fable sessions. The patch blanks the config name at its
+  single read site so the killswitch is always off; `TodoWrite` is unaffected.
+
 ## [0.2.0] - 2026-07-23
 
 ### Added

@@ -1,0 +1,37 @@
+schema = 1
+
+[[patch]]
+id      = "session-tasks"
+summary = "Restore the session task tools (TaskCreate/TaskUpdate/TaskGet/TaskList) hidden by the server killswitch"
+segment = "__BUN"
+
+# The task tools gate on `isEnabled(){return JO()&&!Yee()}`. JO() is on unless
+# CLAUDE_CODE_ENABLE_TASKS is explicitly false; Yee() is the killswitch — it reads
+# the statsig dynamic config `tengu_vellum_ash` (a list of model-id substrings) and
+# returns true when the session model matches, hiding the tools. Blank the config
+# name so the lookup misses and returns its `[]` default: Yee() is then always
+# false, restoring the tools and the task-list prompt attachment. TodoWrite stays
+# off — its `!JO()&&!Yee()` gate needs tasks explicitly disabled.
+[[patch.site]]
+anchor = "task killswitch config"
+find   = 'Je("tengu_vellum_ash",[])'
+drop   = 'tengu_vellum_ash'
+
+# Structural derive — tolerates the minifier renaming the statsig getter (`Je`)
+# across a Claude update. The config key is a server-side constant, so it anchors
+# the site; only the leading local can move.
+[[patch.derive]]
+anchor  = "task killswitch config"
+pattern = '\w+\("(?P<drop>tengu_vellum_ash)",\[\]\)'
+find    = 0
+drop    = "drop"
+
+[patch.heal]
+prompt = """
+Locate the session task-tools killswitch: a statsig dynamic-config read of the form
+`<getter>("tengu_vellum_ash",[])` inside a small function that returns a boolean —
+true when the current session model matches an entry in the returned list. Output an
+edit that blanks the config-name string `tengu_vellum_ash` to spaces, keeping the
+call length-neutral, so the lookup misses, returns its empty-array default, and the
+function always returns false.
+"""

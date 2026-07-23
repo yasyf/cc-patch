@@ -14,6 +14,11 @@ your top-level Claude Code session, while the agents it spawns run at standard
 speed: subagents, agent-team teammates, and workflow branches. The fastmode pack
 patches the binary so delegated Opus agents run fast too.
 
+A second builtin, **tasktools**, restores the session task tools —
+`TaskCreate`/`TaskUpdate`/`TaskGet`/`TaskList` and the task-list prompt
+attachment — that a server-side killswitch hides on some models (e.g. Fable
+sessions). The tasktools pack neutralizes that gate.
+
 [![CI](https://img.shields.io/github/actions/workflow/status/yasyf/cc-patch/ci.yml?branch=main&label=ci)](https://github.com/yasyf/cc-patch/actions/workflows/ci.yml)
 
 ## Get started
@@ -92,6 +97,7 @@ are covered by `apply --all` and the daemons.
 
 ```bash
 cc-patch install fastmode                  # a builtin, by name
+cc-patch install tasktools                 # another builtin
 cc-patch install <owner>/<repo>[@<ref>]    # a remote pack: clone, validate, record
 cc-patch uninstall fastmode                # or <owner>/<repo>
 cc-patch update [<owner>/<repo>]           # re-clone remotes; builtins track cc-patch
@@ -118,6 +124,18 @@ asked" requirement at both gates while leaving the model-eligibility check intac
 so an Opus delegated agent qualifies on its own. The edit is verified end to end: a
 patched binary produces `usage.speed: fast` on an Opus subagent and leaves
 sonnet/fable at `standard`.
+
+## How the tasktools patch works
+
+The session task tools register with an `isEnabled` gate that ANDs two checks: a
+flag that is on unless `CLAUDE_CODE_ENABLE_TASKS` is explicitly `false`, and a
+statsig killswitch that reads the dynamic config `tengu_vellum_ash` — a list of
+model-id substrings — and disables the tools when the current session model
+matches. The tasktools pack blanks the config name to spaces at its single read
+site, so the lookup misses and returns its empty-array default; the killswitch no
+longer fires, and the tools and the task-list prompt attachment come back.
+`TodoWrite` stays disabled, since its own gate only enables it when tasks are
+explicitly turned off.
 
 ## Commands
 
