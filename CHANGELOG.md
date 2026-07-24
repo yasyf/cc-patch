@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Daemon installation now converges one durable daemonkit service plan instead
+  of managing launchd plists and lifecycle commands directly.
+
 ## [0.6.0] - 2026-07-23
 
 ### Changed
