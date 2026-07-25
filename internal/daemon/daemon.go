@@ -14,6 +14,7 @@ import (
 
 	"github.com/yasyf/cc-patch/internal/claude"
 	"github.com/yasyf/cc-patch/internal/store"
+	"github.com/yasyf/cc-patch/internal/version"
 )
 
 const (
@@ -39,7 +40,7 @@ func Plan(inst claude.Install) (service.Plan, error) {
 	if err != nil {
 		return service.Plan{}, err
 	}
-	program, err := service.CanonicalExecutable()
+	program, err := service.StableProgram("cc-patch", version.String())
 	if err != nil {
 		return service.Plan{}, fmt.Errorf("resolve current executable: %w", err)
 	}
