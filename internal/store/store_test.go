@@ -67,6 +67,60 @@ func TestStateEncodingIsExact(t *testing.T) {
 	}
 }
 
+func TestDecodeStateShape(t *testing.T) {
+	const path = "/tmp/cc-patch-state.json"
+	tests := []struct {
+		name            string
+		data            string
+		wantErr         string
+		wantErrContains []string
+	}{
+		{
+			name: "legacy flat",
+			data: `{"overrides":{},"packs":[]}`,
+			wantErrContains: []string{
+				path,
+				"legacy pre-v0.5.0 state document",
+				"delete the file and re-run `cc-patch heal --all` so overrides re-derive",
+			},
+		},
+		{
+			name: "envelope",
+			data: validStateJSON(),
+		},
+		{
+			name:    "malformed non-legacy",
+			data:    `{"schema":"` + stateSchemaIdentity + `","overrides":{}}`,
+			wantErr: `parse state "` + path + `": json: unknown field "overrides"`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			state, err := decodeState([]byte(tt.data), path)
+			if tt.wantErr == "" && len(tt.wantErrContains) == 0 {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if state.Overrides == nil || state.Packs == nil {
+					t.Fatalf("decoded state = %#v, want canonical empty state", state)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("decodeState accepted invalid state")
+			}
+			if tt.wantErr != "" && err.Error() != tt.wantErr {
+				t.Fatalf("decodeState error = %q, want %q", err, tt.wantErr)
+			}
+			for _, want := range tt.wantErrContains {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("decodeState error = %q, want substring %q", err, want)
+				}
+			}
+		})
+	}
+}
+
 func TestLoadRejectsNonExactState(t *testing.T) {
 	valid := validStateJSON()
 	validPayload := `{"overrides":{},"packs":[]}`

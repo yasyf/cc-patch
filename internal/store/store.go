@@ -252,6 +252,9 @@ func decodeState(data []byte, path string) (State, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&envelope); err != nil {
+		if hasLegacyFlatShape(data) {
+			return State{}, fmt.Errorf("state %q: legacy pre-v0.5.0 state document; delete the file and re-run `cc-patch heal --all` so overrides re-derive", path)
+		}
 		return State{}, fmt.Errorf("parse state %q: %w", path, err)
 	}
 	var trailing any
@@ -309,6 +312,18 @@ func decodeState(data []byte, path string) (State, error) {
 		return State{}, fmt.Errorf("state %q: %w", path, err)
 	}
 	return state, nil
+}
+
+func hasLegacyFlatShape(data []byte) bool {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return false
+	}
+	_, hasSchema := fields["schema"]
+	_, hasSchemaVersion := fields["schemaVersion"]
+	_, hasOverrides := fields["overrides"]
+	_, hasPacks := fields["packs"]
+	return !hasSchema && !hasSchemaVersion && (hasOverrides || hasPacks)
 }
 
 func encodeState(state State) ([]byte, error) {
