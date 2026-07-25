@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.2] - 2026-07-25
+
+### Changed
+
+- Pin daemonkit v0.20.6 so a launchd agent whose service was booted out reads
+  as drift rather than a hard failure (`launchctl print` exit 113), letting
+  `install-daemons` and `status` converge on a cold upgrade, and so durable
+  untrack no longer spends a settling child's reap budget on the store.
+
 ## [0.12.1] - 2026-07-24
 
 ### Changed
@@ -124,7 +133,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install-daemons` / `uninstall-daemons` — launchd agents that re-patch on
   auto-update (WatchPaths) and heal daily (StartCalendarInterval).
 
-[Unreleased]: https://github.com/yasyf/cc-patch/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/yasyf/cc-patch/compare/v0.12.2...HEAD
+[0.12.2]: https://github.com/yasyf/cc-patch/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/yasyf/cc-patch/compare/v0.11.1...v0.12.1
 [0.11.1]: https://github.com/yasyf/cc-patch/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/yasyf/cc-patch/compare/v0.10.0...v0.11.0
