@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The watch and heal launchd agents register at daemonkit's version-stable
-  program path (`~/.daemonkit/bin/cc-patch`); daemonkit v0.20.0 heals the
+  program path (`~/.daemonkit/bin/cc-patch`); daemonkit v0.20.1 heals the
   stored registration stranded at a deleted Caskroom version directory.
 
 ### Fixed
