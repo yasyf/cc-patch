@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.12.0] - 2026-07-24
+## [0.12.1] - 2026-07-24
 
 ### Changed
 
@@ -124,8 +124,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install-daemons` / `uninstall-daemons` — launchd agents that re-patch on
   auto-update (WatchPaths) and heal daily (StartCalendarInterval).
 
-[Unreleased]: https://github.com/yasyf/cc-patch/compare/v0.12.0...HEAD
-[0.12.0]: https://github.com/yasyf/cc-patch/compare/v0.11.1...v0.12.0
+[Unreleased]: https://github.com/yasyf/cc-patch/compare/v0.12.1...HEAD
+[0.12.1]: https://github.com/yasyf/cc-patch/compare/v0.11.1...v0.12.1
 [0.11.1]: https://github.com/yasyf/cc-patch/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/yasyf/cc-patch/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/yasyf/cc-patch/compare/v0.9.0...v0.10.0
