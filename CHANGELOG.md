@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-07-24
+
+### Changed
+
+- The watch and heal launchd agents register at daemonkit's version-stable
+  program path (`~/.daemonkit/bin/cc-patch`); daemonkit v0.20.0 heals the
+  stored registration stranded at a deleted Caskroom version directory.
+
+### Fixed
+
+- A legacy pre-v0.5.0 `state.json` now fails with an actionable error naming
+  the file and the remedy instead of `json: unknown field "overrides"`.
+
 ## [0.11.1] - 2026-07-24
 
 ### Changed
@@ -111,7 +124,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install-daemons` / `uninstall-daemons` — launchd agents that re-patch on
   auto-update (WatchPaths) and heal daily (StartCalendarInterval).
 
-[Unreleased]: https://github.com/yasyf/cc-patch/compare/v0.11.1...HEAD
+[Unreleased]: https://github.com/yasyf/cc-patch/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/yasyf/cc-patch/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/yasyf/cc-patch/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/yasyf/cc-patch/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/yasyf/cc-patch/compare/v0.9.0...v0.10.0
