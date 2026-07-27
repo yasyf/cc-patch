@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.3] - 2026-07-27
+
+### Changed
+
+- Pin daemonkit v0.20.9 so the launchd agents resolve the real home from the
+  passwd database: a helper installed under Homebrew postinstall's sandboxed
+  temporary `HOME` registers in the user's own `~/Library/LaunchAgents` instead
+  of a throwaway directory. `launchctl` exit 5 is no longer retried as
+  transient, and recovery-mode reconcile clears an install wedged against its
+  own stale registration.
+
 ## [0.12.2] - 2026-07-25
 
 ### Changed
@@ -133,7 +144,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install-daemons` / `uninstall-daemons` — launchd agents that re-patch on
   auto-update (WatchPaths) and heal daily (StartCalendarInterval).
 
-[Unreleased]: https://github.com/yasyf/cc-patch/compare/v0.12.2...HEAD
+[Unreleased]: https://github.com/yasyf/cc-patch/compare/v0.12.3...HEAD
+[0.12.3]: https://github.com/yasyf/cc-patch/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/yasyf/cc-patch/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/yasyf/cc-patch/compare/v0.11.1...v0.12.1
 [0.11.1]: https://github.com/yasyf/cc-patch/compare/v0.11.0...v0.11.1
