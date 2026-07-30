@@ -79,6 +79,31 @@ func Apply(ctx context.Context, inst claude.Install, p registry.Patch) (Outcome,
 	return Outcome{PatchID: p.ID, Version: inst.Version, Changed: res.Changed, Derived: true, Result: res}, nil
 }
 
+// Revert restores the bytes a patch's sites blanked, for a patch whose upstream
+// issue has closed. Idempotent when the patch is not applied.
+func Revert(ctx context.Context, inst claude.Install, p registry.Patch) (Outcome, error) {
+	sites := p.Sites
+	derived := false
+	if stored, ok, err := overrideSites(inst, p); err != nil {
+		return Outcome{}, err
+	} else if ok {
+		sites, derived = stored, true
+	}
+	res, err := binpatch.Apply(ctx, inst.Binary, inst.Backup(), p.SegmentName, undo(registry.Substitutions(sites)))
+	if err != nil {
+		return Outcome{}, fmt.Errorf("revert %s: %w", p.ID, err)
+	}
+	return Outcome{PatchID: p.ID, Version: inst.Version, Changed: res.Changed, Derived: derived, Result: res}, nil
+}
+
+func undo(subs []binpatch.Substitution) []binpatch.Substitution {
+	out := make([]binpatch.Substitution, len(subs))
+	for i, s := range subs {
+		out[i] = binpatch.Substitution{Find: s.Replace, Replace: s.Find}
+	}
+	return out
+}
+
 // PersistSites records derived sites for a version+patch so later runs reuse them.
 func PersistSites(version, patchID string, sites []registry.Site) error {
 	saved := make([]store.Site, len(sites))

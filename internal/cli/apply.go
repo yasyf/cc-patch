@@ -24,6 +24,18 @@ func newApplyCmd() *cobra.Command {
 			}
 			warn(cmd, warns)
 			for _, p := range patches {
+				if retired(cmd, p) {
+					out, err := patcher.Revert(cmd.Context(), inst, p)
+					if err != nil {
+						return err
+					}
+					state := "retired"
+					if out.Changed {
+						state = "retired (reverted)"
+					}
+					cmd.Printf("%s  %s  %s — %s closed\n", out.Version, out.PatchID, state, p.Upstream)
+					continue
+				}
 				out, err := patcher.Apply(cmd.Context(), inst, p)
 				if err != nil {
 					return err

@@ -9,6 +9,7 @@ import (
 
 	"github.com/yasyf/cc-patch/internal/patchset"
 	"github.com/yasyf/cc-patch/internal/registry"
+	"github.com/yasyf/cc-patch/internal/upstream"
 	"github.com/yasyf/cc-patch/internal/version"
 )
 
@@ -61,6 +62,16 @@ func warn(cmd *cobra.Command, errs []error) {
 	for _, e := range errs {
 		cmd.PrintErrln("warning:", e)
 	}
+}
+
+// retired treats a failed lookup as still-open, so an unreachable GitHub never
+// silently drops a patch.
+func retired(cmd *cobra.Command, p registry.Patch) bool {
+	closed, err := upstream.Retired(cmd.Context(), p.Upstream)
+	if err != nil {
+		cmd.PrintErrln("warning:", err)
+	}
+	return closed
 }
 
 func addSelectFlags(cmd *cobra.Command, all *bool, id *string) {

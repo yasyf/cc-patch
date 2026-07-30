@@ -13,6 +13,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/yasyf/cc-patch/internal/registry"
+	"github.com/yasyf/cc-patch/internal/upstream"
 )
 
 var patchID = regexp.MustCompile(`^[a-z0-9-]+$`)
@@ -24,12 +25,17 @@ type Manifest struct {
 }
 
 type patchSpec struct {
-	ID      string       `toml:"id"`
-	Summary string       `toml:"summary"`
-	Segment string       `toml:"segment"`
-	Site    []siteSpec   `toml:"site"`
-	Derive  []deriveSpec `toml:"derive"`
-	Heal    healSpec     `toml:"heal"`
+	ID       string       `toml:"id"`
+	Summary  string       `toml:"summary"`
+	Segment  string       `toml:"segment"`
+	Site     []siteSpec   `toml:"site"`
+	Derive   []deriveSpec `toml:"derive"`
+	Heal     healSpec     `toml:"heal"`
+	Upstream upstreamSpec `toml:"upstream"`
+}
+
+type upstreamSpec struct {
+	Issue string `toml:"issue"`
 }
 
 type siteSpec struct {
@@ -105,6 +111,13 @@ func (p patchSpec) compile(namespace string) (registry.Patch, error) {
 	if err != nil {
 		return registry.Patch{}, fmt.Errorf("patch %q: %w", p.ID, err)
 	}
+	var issue upstream.Ref
+	if raw := strings.TrimSpace(p.Upstream.Issue); raw != "" {
+		issue, err = upstream.Parse(raw)
+		if err != nil {
+			return registry.Patch{}, fmt.Errorf("patch %q: %w", p.ID, err)
+		}
+	}
 	return registry.Patch{
 		ID:          namespace + "/" + p.ID,
 		Summary:     p.Summary,
@@ -112,6 +125,7 @@ func (p patchSpec) compile(namespace string) (registry.Patch, error) {
 		Sites:       sites,
 		Derive:      derive,
 		HealPrompt:  strings.TrimSpace(p.Heal.Prompt),
+		Upstream:    issue,
 	}, nil
 }
 

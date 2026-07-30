@@ -30,6 +30,10 @@ func newStatusCmd() *cobra.Command {
 					cmd.Printf("  %s  error: %v\n", p.ID, err)
 					continue
 				}
+				if retired(cmd, p) {
+					cmd.Printf("  %s  %s (retired — %s closed)\n", p.ID, summarize(out.Result), p.Upstream)
+					continue
+				}
 				cmd.Printf("  %s  %s\n", p.ID, summarize(out.Result))
 			}
 			return nil

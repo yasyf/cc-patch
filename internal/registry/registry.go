@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/yasyf/cc-patch/internal/binpatch"
+	"github.com/yasyf/cc-patch/internal/upstream"
 )
 
 // Site is one neutralize-a-gate edit: Find is the exact byte run to locate, and
@@ -50,6 +51,9 @@ type Patch struct {
 	// HealPrompt is the pack author's prose telling Claude how to re-locate the
 	// sites when even Derive drifts. Empty disables the claude -p heal escalation.
 	HealPrompt string
+	// Upstream is the GitHub issue tracking the bug this patch works around; once
+	// it closes the patch retires. The zero Ref never retires.
+	Upstream upstream.Ref
 }
 
 // Substitutions renders each site to a binpatch substitution.
