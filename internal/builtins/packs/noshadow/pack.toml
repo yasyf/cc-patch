@@ -1,0 +1,58 @@
+schema = 1
+
+[[patch]]
+id      = "find-grep"
+summary = "Fall back to system grep/find instead of the embedded ugrep/bfs shadow functions"
+segment = "__BUN"
+
+# Claude Code injects find()/grep() wrappers into every Bash shell that exec the
+# embedded bfs/ugrep. The embedded ugrep busy-polls stdin in select() and can spin
+# at 100% CPU indefinitely, outliving the tool call that spawned it. The wrapper
+# already carries a fallback for a missing binary — `if [[ ! -x $_cc_bin ]]; then
+# command <tool> …; return; fi` — so blanking the `! -x` test leaves `[[ $_cc_bin ]]`,
+# always true for a resolved path, and every call takes the vendor's own fallback.
+# The tool name is interpolated, so one edit covers both grep and find.
+[patch.upstream]
+issue = "anthropics/claude-code#69736"
+
+# Two copies live in __BUN: the Bun bytecode constant pool (length-prefixed, NUL
+# padded) and the retained JS template source (`${e}` is the tool name). The bare
+# condition matches both, so each site anchors on its own trailing context.
+[[patch.site]]
+anchor   = "shadow fallback (bytecode)"
+find_b64 = "ICBpZiBbWyAhIC14ICRfY2NfYmluIF1dOyB0aGVuIGNvbW1hbmQgAA=="
+drop     = "! -x"
+
+[[patch.site]]
+anchor = "shadow fallback (source)"
+find   = '  if [[ ! -x $_cc_bin ]]; then command ${e}'
+drop   = "! -x"
+
+# The shell text is vendor-authored and survives minification; only the
+# interpolated tool-name local can be renamed across an update.
+[[patch.derive]]
+anchor  = "shadow fallback (bytecode)"
+pattern = '  if \[\[ (?P<drop>! -x) \$_cc_bin \]\]; then command \x00'
+find    = 0
+drop    = "drop"
+
+[[patch.derive]]
+anchor  = "shadow fallback (source)"
+pattern = '  if \[\[ (?P<drop>! -x) \$_cc_bin \]\]; then command \$\{\w+\}'
+find    = 0
+drop    = "drop"
+
+[patch.heal]
+prompt = """
+Locate the shell function Claude Code writes into its Bash shell snapshot to shadow
+`find` and `grep` with the embedded `bfs`/`ugrep`. It resolves the CLI binary into a
+local (`_cc_bin`) and guards it with a fallback of the form
+`if [[ ! -x $_cc_bin ]]; then command <tool> ${1+"$@"}; return; fi`, where <tool> is
+an interpolated variable holding the shadowed tool name. Two copies exist in the
+__BUN segment: one in the Bun bytecode constant pool (the string is length-prefixed
+and followed by NUL padding) and one in the retained JS template source (the tool
+name appears as a `${...}` interpolation). Output an edit per copy that blanks the
+`! -x` test to spaces, keeping each length-neutral, so the condition degrades to
+`[[ $_cc_bin ]]` — always true for a resolved path — and every call takes the
+existing fallback to the system tool.
+"""
