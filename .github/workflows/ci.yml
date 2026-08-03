@@ -7,7 +7,7 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [macos-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
@@ -33,7 +33,7 @@ jobs:
         run: go build ./...
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
@@ -46,7 +46,7 @@ jobs:
           version: latest
 
   vuln:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v6

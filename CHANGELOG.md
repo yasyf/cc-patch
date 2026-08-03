@@ -4,7 +4,37 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.13.0] - 2026-08-03
+
+### Changed
+
+- cc-patch is macOS-only. Release builds and CI drop Linux, following daemonkit
+  v0.21.0, which no longer compiles off macOS.
+- Pin daemonkit v0.21.0. The watch and heal agents are applied and removed one
+  label at a time through `daemonkit/launchd` instead of converging a service
+  controller, so cc-patch no longer keeps its own daemon-state databases at
+  `~/.local/share/cc-patch/daemon-services.db` and
+  `daemon-service-processes.db`. Those two files are left behind by this
+  upgrade and can be deleted by hand.
+- `uninstall-daemons` attempts every label and reports the failures together,
+  so one refusal no longer strands the remaining agent.
+- The watch and heal agents still register the version-stable program path
+  `~/.daemonkit/bin/cc-patch`. cc-patch now places that copy of its own
+  executable and refreshes it by content digest, because daemonkit v0.21 places
+  a program only for a daemon it serves. `uninstall-daemons` deletes the copy
+  and the sidecar the previous release left beside it.
+
+### Fixed
+
+- `uninstall-daemons` removes the launchd plists written by earlier releases.
+  daemonkit v0.21 proves ownership from a marker inside the plist and refuses
+  one that carries none, so every agent from an earlier install would otherwise
+  have stayed loaded.
+- The launchd log directory resolves the user's home through the passwd
+  database. Agents registered under Homebrew's post-install hook, which runs
+  with a sandboxed temporary `HOME`, now write to the user's own
+  `~/Library/Logs/cc-patch` instead of a directory that is deleted when the
+  install finishes.
 
 ## [0.12.3] - 2026-07-27
 
@@ -144,7 +174,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install-daemons` / `uninstall-daemons` — launchd agents that re-patch on
   auto-update (WatchPaths) and heal daily (StartCalendarInterval).
 
-[Unreleased]: https://github.com/yasyf/cc-patch/compare/v0.12.3...HEAD
+[0.13.0]: https://github.com/yasyf/cc-patch/compare/v0.12.3...v0.13.0
 [0.12.3]: https://github.com/yasyf/cc-patch/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/yasyf/cc-patch/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/yasyf/cc-patch/compare/v0.11.1...v0.12.1
