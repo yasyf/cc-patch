@@ -148,9 +148,11 @@ func Status(binary, segName string, subs []Substitution) (Result, error) {
 	return Result{Sites: statuses(rs)}, nil
 }
 
-// Apply patches every unpatched site in place and re-signs the binary. It backs
-// the pristine original up to backup before the first write, is idempotent when
-// already patched, and returns ErrDrift when any site is missing.
+// Apply patches every unpatched site, then signs and verifies a temp copy
+// before renaming it over the binary, so a signing failure leaves the live
+// binary untouched. It backs the pristine original up to backup before the
+// first write, re-signs a patched binary whose signature is invalid, and
+// returns ErrDrift when any site is missing.
 func Apply(ctx context.Context, binary, backup, segName string, subs []Substitution) (Result, error) {
 	seg, err := macho.FindSegment(binary, segName)
 	if err != nil {
@@ -178,7 +180,13 @@ func Apply(ctx context.Context, binary, backup, segName string, subs []Substitut
 		return Result{Sites: statuses(rs)}, fmt.Errorf("%w: sites %v absent in %s", ErrDrift, missing, segName)
 	}
 	if len(pending) == 0 {
-		return Result{Changed: false, Sites: statuses(rs)}, nil
+		if err := VerifySignature(ctx, binary); err == nil {
+			return Result{Changed: false, Sites: statuses(rs)}, nil
+		}
+		if err := install(ctx, binary, data); err != nil {
+			return Result{}, err
+		}
+		return Result{Changed: true, Sites: statuses(rs)}, nil
 	}
 	if err := ensureBackup(binary, backup); err != nil {
 		return Result{}, err
@@ -186,10 +194,7 @@ func Apply(ctx context.Context, binary, backup, segName string, subs []Substitut
 	for _, r := range pending {
 		copy(data[r.offset:r.offset+int64(len(r.sub.Replace))], r.sub.Replace)
 	}
-	if err := writeInPlace(binary, data); err != nil {
-		return Result{}, err
-	}
-	if err := resign(ctx, binary); err != nil {
+	if err := install(ctx, binary, data); err != nil {
 		return Result{}, err
 	}
 	return Result{Changed: true, Sites: statuses(rs)}, nil
@@ -233,37 +238,79 @@ func writeInPlace(binary string, data []byte) error {
 	return writeAtomic(binary, data, 0o755)
 }
 
-func writeAtomic(path string, data []byte, perm os.FileMode) error {
+func writeTemp(path string, data []byte, perm os.FileMode) (string, error) {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, ".ccpatch-*")
 	if err != nil {
-		return fmt.Errorf("create temp in %q: %w", dir, err)
+		return "", fmt.Errorf("create temp in %q: %w", dir, err)
 	}
 	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }()
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
-		return fmt.Errorf("write temp: %w", err)
+		_ = os.Remove(tmpName)
+		return "", fmt.Errorf("write temp: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temp: %w", err)
+		_ = os.Remove(tmpName)
+		return "", fmt.Errorf("close temp: %w", err)
 	}
 	if err := os.Chmod(tmpName, perm); err != nil {
-		return fmt.Errorf("chmod temp: %w", err)
+		_ = os.Remove(tmpName)
+		return "", fmt.Errorf("chmod temp: %w", err)
 	}
-	if err := os.Rename(tmpName, path); err != nil {
+	return tmpName, nil
+}
+
+func writeAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp, err := writeTemp(path, data, perm)
+	if err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
 		return fmt.Errorf("rename over %q: %w", path, err)
 	}
 	return nil
 }
 
+func install(ctx context.Context, binary string, data []byte) error {
+	tmp, err := writeTemp(binary, data, 0o755)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(tmp) }()
+	if err := resign(ctx, tmp); err != nil {
+		return err
+	}
+	if err := VerifySignature(ctx, tmp); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, binary); err != nil {
+		return fmt.Errorf("rename over %q: %w", binary, err)
+	}
+	return nil
+}
+
 func resign(ctx context.Context, binary string) error {
-	// The in-place edit invalidates the vendor hardened-runtime signature; replace
-	// it with an ad-hoc signature so the kernel will still exec the binary.
-	_ = exec.CommandContext(ctx, "codesign", "--remove-signature", binary).Run()
+	// The patch invalidates the vendor hardened-runtime signature, and codesign
+	// cannot force-sign over a malformed signature blob; strip first, then sign
+	// ad-hoc so the kernel will still exec the binary.
+	if out, err := exec.CommandContext(ctx, "codesign", "--remove-signature", binary).CombinedOutput(); err != nil {
+		return fmt.Errorf("codesign --remove-signature %q: %w: %s", binary, err, strings.TrimSpace(string(out)))
+	}
 	out, err := exec.CommandContext(ctx, "codesign", "--force", "--sign", "-", binary).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("codesign %q: %w: %s", binary, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// VerifySignature reports whether the binary carries a valid signature. An
+// unsigned or malformed-signature binary is SIGKILLed by the kernel at exec.
+func VerifySignature(ctx context.Context, binary string) error {
+	out, err := exec.CommandContext(ctx, "codesign", "--verify", "--strict", binary).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("codesign --verify %q: %w: %s", binary, err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }

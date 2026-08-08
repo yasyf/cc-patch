@@ -4,6 +4,32 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.1] - 2026-08-12
+
+### Fixed
+
+- A failed `codesign` no longer leaves Claude Code unrunnable. `apply` signs and
+  verifies a temporary copy, then renames it over the binary only once
+  `codesign --verify --strict` passes. It previously wrote the patched bytes
+  over the live binary and signed afterwards, so a `codesign` failure in that
+  window left the installed binary unsigned — and Apple Silicon SIGKILLs an
+  unsigned Mach-O at exec.
+- `apply` repairs a binary that is byte-patched but carries an invalid
+  signature by re-signing it, leaving every applied patch in place. The
+  idempotence check compared bytes alone, so a binary that could not exec was
+  reported as `already patched` on every subsequent run and never retried.
+- `resign` checks the `codesign --remove-signature` error instead of discarding
+  it. Removing the signature first is what recovers a malformed signature blob,
+  which `--force --sign -` alone refuses with "invalid or unsupported format
+  for signature"; since both steps now run against the temporary copy, a
+  failure at either aborts before the live binary is touched.
+- `heal` verifies the Claude binary before shelling out to it and names
+  `cc-patch restore` when it cannot run. The binary it invokes to re-derive
+  sites is the one a failed patch may have left unsigned, which surfaced as
+  `run claude -p: signal: killed`.
+- `heal` bounds `claude -p` at 15 minutes, so the daily agent cannot wedge
+  indefinitely on a hung re-derivation.
+
 ## [0.13.0] - 2026-08-03
 
 ### Changed
@@ -174,6 +200,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install-daemons` / `uninstall-daemons` — launchd agents that re-patch on
   auto-update (WatchPaths) and heal daily (StartCalendarInterval).
 
+[0.13.1]: https://github.com/yasyf/cc-patch/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/yasyf/cc-patch/compare/v0.12.3...v0.13.0
 [0.12.3]: https://github.com/yasyf/cc-patch/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/yasyf/cc-patch/compare/v0.12.1...v0.12.2

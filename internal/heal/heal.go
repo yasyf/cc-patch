@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/yasyf/cc-patch/internal/binpatch"
 	"github.com/yasyf/cc-patch/internal/claude"
@@ -65,6 +66,9 @@ type rederivedSite struct {
 }
 
 func rederive(ctx context.Context, inst claude.Install, p registry.Patch) ([]registry.Site, error) {
+	if err := binpatch.VerifySignature(ctx, inst.Binary); err != nil {
+		return nil, fmt.Errorf("claude binary cannot be executed, run `cc-patch restore`: %w", err)
+	}
 	window, err := binpatch.Window(inst.Binary, p.SegmentName)
 	if err != nil {
 		return nil, err
@@ -121,8 +125,13 @@ Use your tools to grep the file and verify each find matches exactly once. Outpu
 Patch id: %s.`, bundlePath, p.HealPrompt, p.ID)
 }
 
+var rederiveTimeout = 15 * time.Minute
+
 func runClaude(ctx context.Context, launcher, prompt string) (string, error) {
-	cmd := exec.CommandContext(ctx, launcher,
+	ctx, cancel := context.WithTimeout(ctx, rederiveTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(
+		ctx, launcher,
 		"-p",
 		"--model", "opus",
 		"--settings", `{"fastMode":true}`,
@@ -132,6 +141,15 @@ func runClaude(ctx context.Context, launcher, prompt string) (string, error) {
 	)
 	out, err := cmd.Output()
 	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			if stderr := strings.TrimSpace(string(exitErr.Stderr)); stderr != "" {
+				err = fmt.Errorf("%w: %s", err, truncate(stderr, 200))
+			}
+		}
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return "", fmt.Errorf("run claude -p: timed out after %s: %w (%w)", rederiveTimeout, context.DeadlineExceeded, err)
+		}
 		return "", fmt.Errorf("run claude -p: %w", err)
 	}
 	var env struct {

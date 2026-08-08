@@ -27,6 +27,14 @@ linters:
       excludes:
         - G204
         - G304
+  exclusions:
+    rules:
+      # Test fixtures are executables written to t.TempDir(), so the file-mode
+      # and path-taint rules only fire on the setup they require.
+      - path: _test\.go
+        linters:
+          - gosec
+        text: G302|G306|G703
 
 formatters:
   enable:
