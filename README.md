@@ -19,6 +19,11 @@ A second builtin, **tasktools**, restores the session task tools —
 attachment — that a server-side killswitch hides on some models (e.g. Fable
 sessions). The tasktools pack neutralizes that gate.
 
+Another builtin, **workflowdefault**, blanks the Workflow tool's explicit-opt-in
+gate — the description text that forbids dynamic workflows unless the user typed
+"ultracode" or asked for one in their own words — so a standing CLAUDE.md opt-in
+governs, without ultracode's forced xhigh effort.
+
 [![CI](https://img.shields.io/github/actions/workflow/status/yasyf/cc-patch/ci.yml?branch=main&label=ci)](https://github.com/yasyf/cc-patch/actions/workflows/ci.yml)
 
 ## Get started
@@ -98,6 +103,7 @@ are covered by `apply --all` and the daemons.
 ```bash
 cc-patch install fastmode                  # a builtin, by name
 cc-patch install tasktools                 # another builtin
+cc-patch install workflowdefault           # another builtin
 cc-patch install <owner>/<repo>[@<ref>]    # a remote pack: clone, validate, record
 cc-patch uninstall fastmode                # or <owner>/<repo>
 cc-patch update [<owner>/<repo>]           # re-clone remotes; builtins track cc-patch
@@ -137,6 +143,18 @@ longer fires, and the tools and the task-list prompt attachment come back.
 `TodoWrite` stays disabled, since its own gate only enables it when tasks are
 explicitly turned off.
 
+## How the workflowdefault patch works
+
+The Workflow tool's description opens with a hard gate: only an explicit
+per-session opt-in (the "ultracode" keyword, an ultracode session, or a request in
+the user's own words) may trigger a dynamic workflow, and a task that would merely
+benefit from one does not count — which overrides a CLAUDE.md standing opt-in. The
+pack blanks that gating block to spaces (length-neutral), along with the two
+places that point back at it: the Ultracode paragraph's fallback sentence, and the
+ultracode-off system-reminder's claim that the gate applies again. Nothing in the
+tool description then contradicts the user's own instructions, and CLAUDE.md
+decides when workflows run.
+
 ## Commands
 
 | Command | What it does |
@@ -153,7 +171,8 @@ explicitly turned off.
 | `uninstall-daemons` | Remove both agents. |
 
 `--all` operates on every installed patch; `--id <namespace>/<patch>` targets one
-(e.g. `fastmode/delegated-agents` or `<owner>/<repo>/<patch>`).
+(e.g. `fastmode/delegated-agents`, `workflowdefault/workflow-optin`, or
+`<owner>/<repo>/<patch>`).
 
 Status: works on macOS (arm64). The engine is release-agnostic; a pack's pinned
 sites are version-proven, and a release that reshapes the code triggers the pack's
