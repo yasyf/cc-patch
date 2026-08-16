@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   length-neutral sites: the gating block, the Ultracode paragraph's fallback
   pointer, and the ultracode-off reminder's claim that the gate applies again.
 
+### Changed
+
+- Bump the Go toolchain to 1.26.6, clearing four standard-library advisories
+  (GO-2026-5026, GO-2026-5972, GO-2026-6090, GO-2026-6218) that govulncheck
+  reports against 1.26.5.
+
 ## [0.13.1] - 2026-08-12
 
 ### Fixed
