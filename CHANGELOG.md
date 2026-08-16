@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (GO-2026-5026, GO-2026-5972, GO-2026-6090, GO-2026-6218) that govulncheck
   reports against 1.26.5.
 
+### Removed
+
+- **tasktools builtin.** Claude Code 2.1.233 renamed the task-tools killswitch
+  from the dynamic config `tengu_vellum_ash` to `tengu_rosy_wren` and inverted
+  it: the read now defaults to disabled, so blanking the config name hides the
+  task tools instead of restoring them. What is left to flip is executable code
+  rather than a string constant, and a length-neutral byte edit only reaches
+  data in the constant pool, so the pack could not be repaired — only dropped.
+  Set `CLAUDE_CODE_ENABLE_TODO_TOOLS=true` in the environment instead.
+
 ## [0.13.1] - 2026-08-12
 
 ### Fixed
