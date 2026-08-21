@@ -5,6 +5,7 @@ package packstore
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -26,13 +27,81 @@ func Install(ctx context.Context, owner, repo, ref string, confirm func([]regist
 	return installFrom(ctx, cloneURL(owner, repo), owner, repo, ref, confirm)
 }
 
+// LocalOwner is the owner segment for hand-authored packs discovered under
+// store.LocalPacksDir. They carry no remote, so they are never cloned, recorded,
+// or updated.
+const LocalOwner = "local"
+
 // Update re-clones an installed pack to refresh its subtree and commit.
 func Update(ctx context.Context, owner, repo, ref string) error {
+	if owner == LocalOwner {
+		return fmt.Errorf("pack %s/%s is local; edit its directory under the local packs dir", owner, repo)
+	}
 	_, _, err := installFrom(ctx, cloneURL(owner, repo), owner, repo, ref, autoConfirm)
 	return err
 }
 
 func autoConfirm([]registry.Patch) (bool, error) { return true, nil }
+
+// LinkLocal validates the pack in dir and links it under store.LocalPacksDir as
+// name, so every load discovers it and edits in dir take effect immediately. An
+// existing link for name is replaced; a real directory there is refused.
+func LinkLocal(dir, name string) ([]registry.Patch, error) {
+	patches, err := compilePackFile(filepath.Join(dir, "cc-patch", "pack.toml"), LocalOwner+"/"+name)
+	if err != nil {
+		return nil, err
+	}
+	base, err := store.LocalPacksDir()
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(base, 0o700); err != nil {
+		return nil, fmt.Errorf("create local packs dir %q: %w", base, err)
+	}
+	link := filepath.Join(base, name)
+	fi, lerr := os.Lstat(link)
+	switch {
+	case lerr == nil && fi.Mode()&os.ModeSymlink == 0:
+		return nil, fmt.Errorf("local pack %q already exists as a directory at %q", name, link)
+	case lerr == nil:
+		if err := os.Remove(link); err != nil {
+			return nil, fmt.Errorf("replace local pack link %q: %w", link, err)
+		}
+	}
+	if err := os.Symlink(dir, link); err != nil {
+		return nil, fmt.Errorf("link local pack %q: %w", link, err)
+	}
+	return patches, nil
+}
+
+// loadLocal compiles every pack discovered under store.LocalPacksDir, returning
+// per-pack errors alongside the patches that did compile. A missing dir yields
+// nothing, since local packs are optional.
+func loadLocal() ([]registry.Patch, []error, error) {
+	base, err := store.LocalPacksDir()
+	if err != nil {
+		return nil, nil, err
+	}
+	entries, err := os.ReadDir(base)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil, nil
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("read local packs dir %q: %w", base, err)
+	}
+	var patches []registry.Patch
+	var errs []error
+	for _, e := range entries {
+		namespace := LocalOwner + "/" + e.Name()
+		loaded, cerr := compilePackFile(filepath.Join(base, e.Name(), "cc-patch", "pack.toml"), namespace)
+		if cerr != nil {
+			errs = append(errs, fmt.Errorf("pack %s: %w", namespace, cerr))
+			continue
+		}
+		patches = append(patches, loaded...)
+	}
+	return patches, errs, nil
+}
 
 // InstallBuiltin records the embedded builtin pack named name — only if confirm
 // returns true — and returns its patches. Builtins live in the binary, so there
@@ -62,6 +131,9 @@ func InstallBuiltin(name string, confirm func([]registry.Patch) (bool, error)) (
 // Remove deletes a remote pack's subtree, its installed-pack record, and any heal
 // overrides scoped to it.
 func Remove(owner, repo string) error {
+	if owner == LocalOwner {
+		return fmt.Errorf("pack %s/%s is local; delete its link from the local packs dir", owner, repo)
+	}
 	p := store.InstalledPack{Owner: owner, Repo: repo}
 	ids := installedPatchIDs(p) // read patch ids before deleting the subtree
 	dir, err := packDir(owner, repo)
@@ -118,7 +190,11 @@ func Load() ([]registry.Patch, []error, error) {
 		}
 		patches = append(patches, loaded...)
 	}
-	return patches, errs, nil
+	local, localErrs, err := loadLocal()
+	if err != nil {
+		return nil, errs, err
+	}
+	return append(patches, local...), append(errs, localErrs...), nil
 }
 
 func installFrom(ctx context.Context, cloneURL, owner, repo, ref string, confirm func([]registry.Patch) (bool, error)) ([]registry.Patch, bool, error) {

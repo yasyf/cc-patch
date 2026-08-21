@@ -97,6 +97,17 @@ func Dir() (string, error) {
 	return filepath.Join(home, ".local", "share", "cc-patch"), nil
 }
 
+// LocalPacksDir is where hand-authored packs live (~/.config/cc-patch/packs).
+// They are discovered on every load instead of being recorded in the state file,
+// so a pack you are still editing takes effect without an install step.
+func LocalPacksDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home dir: %w", err)
+	}
+	return filepath.Join(home, ".config", "cc-patch", "packs"), nil
+}
+
 // PacksDir is where installed pack repos live (Dir()/packs).
 func PacksDir() (string, error) {
 	dir, err := Dir()

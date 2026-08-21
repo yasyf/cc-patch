@@ -215,3 +215,75 @@ func TestPatchesDeriveLocatesSites(t *testing.T) {
 		}
 	}
 }
+
+const replacePack = `
+schema = 1
+[[patch]]
+id      = "hook-shell"
+summary = "Spawn hooks through bash"
+[[patch.site]]
+anchor  = "hook spawn"
+find    = '{cmd:"/bin/sh",args:["-c",'
+replace = '{cmd:"bash"   ,args:["-c",'
+`
+
+func TestPatchesReplaceSite(t *testing.T) {
+	m, err := Parse([]byte(replacePack))
+	if err != nil {
+		t.Fatal(err)
+	}
+	patches, err := m.Patches("acme/demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	site := patches[0].Sites[0]
+	if site.Drop != nil {
+		t.Errorf("Drop = %q, want nil for a replace site", site.Drop)
+	}
+	want := []byte(`{cmd:"bash"   ,args:["-c",`)
+	if !bytes.Equal(site.Replace, want) {
+		t.Errorf("Replace = %q, want %q", site.Replace, want)
+	}
+	sub := site.Substitution()
+	if !bytes.Equal(sub.Replace, want) {
+		t.Errorf("Substitution().Replace = %q, want %q", sub.Replace, want)
+	}
+}
+
+func TestPatchesReplaceRejects(t *testing.T) {
+	tests := []struct {
+		name, site, want string
+	}{
+		{
+			name: "length mismatch",
+			site: "find = 'abcd'\nreplace = 'ab'",
+			want: "differ in length",
+		},
+		{
+			name: "drop and replace",
+			site: "find = 'abcd'\nreplace = 'wxyz'\ndrop = 'bc'",
+			want: "not both",
+		},
+		{
+			name: "neither drop nor replace",
+			site: "find = 'abcd'",
+			want: "set exactly one of drop",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			src := "schema = 1\n[[patch]]\nid = \"p\"\nsummary = \"s\"\n[[patch.site]]\nanchor = \"a\"\n" + tt.site + "\n"
+			m, err := Parse([]byte(src))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = m.Patches("acme/demo")
+			if err == nil {
+				t.Fatal("expected an error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("error %q missing %q", err, tt.want)
+			}
+		})
+	}
+}

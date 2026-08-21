@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Local packs.** Every directory under `~/.config/cc-patch/packs` is discovered
+  on load as `local/<dir>`, so a pack you are writing needs no state record and
+  your edits take effect on the next load. `cc-patch install <dir>` validates a
+  pack authored elsewhere and links it there; deleting the link uninstalls it.
+  `update` and `uninstall` refuse a local pack and say so, since it has no remote.
+- **`replace` sites.** A `[[patch.site]]` can now set `replace` (or `replace_b64`)
+  to substitute the whole of `find` instead of blanking a substring of it with
+  `drop`, which only ever neutralized a gate. The edit stays length-neutral, so
+  `replace` must match `find` byte for byte in length. This is what a patch needs
+  to rewrite a value in place rather than delete one — swapping a hardcoded
+  interpreter path, say.
+
 ## [0.14.0] - 2026-08-16
 
 ### Added

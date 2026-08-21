@@ -17,3 +17,17 @@ func TestBlankIsLengthNeutral(t *testing.T) {
 		t.Errorf("blank = %q, want %q", got, want)
 	}
 }
+
+func TestSubstitutionPrefersReplace(t *testing.T) {
+	site := Site{
+		Find:    []byte(`{cmd:"/bin/sh",args:`),
+		Replace: []byte(`{cmd:"bash"   ,args:`),
+	}
+	got := site.Substitution()
+	if !bytes.Equal(got.Replace, site.Replace) {
+		t.Errorf("Replace = %q, want %q", got.Replace, site.Replace)
+	}
+	if len(got.Replace) != len(got.Find) {
+		t.Errorf("length changed: %d != %d", len(got.Replace), len(got.Find))
+	}
+}

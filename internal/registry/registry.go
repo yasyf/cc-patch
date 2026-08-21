@@ -9,17 +9,22 @@ import (
 	"github.com/yasyf/cc-patch/internal/upstream"
 )
 
-// Site is one neutralize-a-gate edit: Find is the exact byte run to locate, and
-// Drop is the substring within it blanked to spaces to disable the gate.
+// Site is one length-neutral edit: Find is the exact byte run to locate, and
+// either Drop is the substring within it blanked to spaces to disable a gate, or
+// Replace is the whole run's substitute for rewriting a value in place.
 type Site struct {
 	// Anchor describes, for humans, what the site controls.
-	Anchor string
-	Find   []byte
-	Drop   []byte
+	Anchor  string
+	Find    []byte
+	Drop    []byte
+	Replace []byte
 }
 
 // Substitution renders the length-neutral edit for this site.
 func (s Site) Substitution() binpatch.Substitution {
+	if s.Replace != nil {
+		return binpatch.Substitution{Find: s.Find, Replace: s.Replace}
+	}
 	return binpatch.Substitution{Find: s.Find, Replace: blank(s.Find, s.Drop)}
 }
 

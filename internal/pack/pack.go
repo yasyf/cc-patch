@@ -6,6 +6,7 @@ package pack
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -39,11 +40,13 @@ type upstreamSpec struct {
 }
 
 type siteSpec struct {
-	Anchor  string `toml:"anchor"`
-	Find    string `toml:"find"`
-	FindB64 string `toml:"find_b64"`
-	Drop    string `toml:"drop"`
-	DropB64 string `toml:"drop_b64"`
+	Anchor     string `toml:"anchor"`
+	Find       string `toml:"find"`
+	FindB64    string `toml:"find_b64"`
+	Drop       string `toml:"drop"`
+	DropB64    string `toml:"drop_b64"`
+	Replace    string `toml:"replace"`
+	ReplaceB64 string `toml:"replace_b64"`
 }
 
 type deriveSpec struct {
@@ -134,6 +137,19 @@ func (s siteSpec) compile() (registry.Site, error) {
 	if err != nil {
 		return registry.Site{}, err
 	}
+	replace, err := decodeOptional("replace", s.Replace, s.ReplaceB64)
+	if err != nil {
+		return registry.Site{}, err
+	}
+	if replace != nil {
+		if s.Drop != "" || s.DropB64 != "" {
+			return registry.Site{}, errors.New("set exactly one of drop / replace, not both")
+		}
+		if len(replace) != len(find) {
+			return registry.Site{}, fmt.Errorf("replace (%d bytes) and find (%d bytes) differ in length", len(replace), len(find))
+		}
+		return registry.Site{Anchor: s.Anchor, Find: find, Replace: replace}, nil
+	}
 	drop, err := decodeField("drop", s.Drop, s.DropB64)
 	if err != nil {
 		return registry.Site{}, err
@@ -142,6 +158,15 @@ func (s siteSpec) compile() (registry.Site, error) {
 		return registry.Site{}, fmt.Errorf("drop %q is not a substring of find %q", drop, find)
 	}
 	return registry.Site{Anchor: s.Anchor, Find: find, Drop: drop}, nil
+}
+
+// decodeOptional resolves a site field that may be absent entirely, yielding nil
+// when neither form is set.
+func decodeOptional(name, ascii, b64 string) ([]byte, error) {
+	if ascii == "" && b64 == "" {
+		return nil, nil
+	}
+	return decodeField(name, ascii, b64)
 }
 
 // decodeField resolves a site field from its ascii and _b64 forms, requiring

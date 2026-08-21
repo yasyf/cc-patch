@@ -273,3 +273,112 @@ func TestInstallBuiltinDeclinedPersistsNothing(t *testing.T) {
 		t.Errorf("declined builtin recorded %d packs, want 0", len(packs))
 	}
 }
+
+// makePackDir builds a plain (non-git) pack directory and returns its path.
+func makePackDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "cc-patch"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "cc-patch", "pack.toml"), []byte(packTOML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func TestLinkLocalIsDiscoveredAndUnrecorded(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := makePackDir(t)
+
+	patches, err := LinkLocal(dir, "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(patches) != 1 || patches[0].ID != "local/demo/fastmode" {
+		t.Fatalf("got %+v, want one local/demo/fastmode patch", patches)
+	}
+
+	loaded, errs, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(errs) != 0 {
+		t.Fatalf("load errors: %v", errs)
+	}
+	if len(loaded) != 1 || loaded[0].ID != "local/demo/fastmode" {
+		t.Fatalf("Load() = %+v, want the linked pack", loaded)
+	}
+
+	packs, err := store.Packs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(packs) != 0 {
+		t.Errorf("store recorded %+v, want a local pack to stay unrecorded", packs)
+	}
+}
+
+func TestLinkLocalRelinksToANewDir(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	if _, err := LinkLocal(makePackDir(t), "demo"); err != nil {
+		t.Fatal(err)
+	}
+	second := makePackDir(t)
+	if _, err := LinkLocal(second, "demo"); err != nil {
+		t.Fatal(err)
+	}
+	base, err := store.LocalPacksDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.Readlink(filepath.Join(base, "demo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != second {
+		t.Errorf("link = %q, want %q", got, second)
+	}
+}
+
+func TestLinkLocalRefusesARealDirectory(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	base, err := store.LocalPacksDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(base, "demo"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LinkLocal(makePackDir(t), "demo"); err == nil {
+		t.Fatal("expected an error for an existing directory, got nil")
+	}
+}
+
+func TestLoadReportsABrokenLocalPack(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	base, err := store.LocalPacksDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(base, "broken"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	patches, errs, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(patches) != 0 {
+		t.Errorf("got %+v, want no patches", patches)
+	}
+	if len(errs) != 1 {
+		t.Fatalf("got %d errors, want 1", len(errs))
+	}
+}
+
+func TestRemoveRefusesALocalPack(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	if err := Remove(LocalOwner, "demo"); err == nil {
+		t.Fatal("expected an error removing a local pack, got nil")
+	}
+}

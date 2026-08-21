@@ -1,6 +1,12 @@
 package cli
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/yasyf/cc-patch/internal/packstore"
+)
 
 func TestParseSpec(t *testing.T) {
 	tests := []struct {
@@ -16,14 +22,12 @@ func TestParseSpec(t *testing.T) {
 		{arg: "fastmode", builtin: true, name: "fastmode"},
 		{arg: "opus-max-thinking", builtin: true, name: "opus-max-thinking"},
 		{arg: "fastmode@v1", wantErr: true},
-		{arg: "../..", wantErr: true},
 		{arg: "../evil", wantErr: true},
 		{arg: "yasyf/..", wantErr: true},
 		{arg: "yasyf/a/b", wantErr: true},
 		{arg: "-flag/repo", wantErr: true},
 		{arg: "yasyf/-flag", wantErr: true},
 		{arg: "-flag", wantErr: true},
-		{arg: "..", wantErr: true},
 		{arg: "/repo", wantErr: true},
 		{arg: "owner/", wantErr: true},
 	}
@@ -44,5 +48,45 @@ func TestParseSpec(t *testing.T) {
 					tt.arg, spec, tt.builtin, tt.name, tt.owner, tt.repo, tt.ref)
 			}
 		})
+	}
+}
+
+func TestParseSpecLocalDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "fastshell")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	spec, err := parseSpec(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.dir != dir {
+		t.Errorf("dir = %q, want %q", spec.dir, dir)
+	}
+	if spec.owner != packstore.LocalOwner || spec.repo != "fastshell" {
+		t.Errorf("got %s/%s, want %s/fastshell", spec.owner, spec.repo, packstore.LocalOwner)
+	}
+	if spec.label() != packstore.LocalOwner+"/fastshell" {
+		t.Errorf("label = %q, want %s/fastshell", spec.label(), packstore.LocalOwner)
+	}
+}
+
+func TestParseSpecExistingRelativeDirIsLocal(t *testing.T) {
+	for _, arg := range []string{"..", "../.."} {
+		spec, err := parseSpec(arg)
+		if err != nil {
+			t.Fatalf("parseSpec(%q): %v", arg, err)
+		}
+		if spec.owner != packstore.LocalOwner || spec.dir == "" {
+			t.Errorf("parseSpec(%q) = %+v, want a local spec", arg, spec)
+		}
+	}
+}
+
+func TestParseSpecPathThatIsNotADirStaysARef(t *testing.T) {
+	for _, arg := range []string{"../evil", "/repo", "./missing"} {
+		if _, err := parseSpec(arg); err == nil {
+			t.Errorf("parseSpec(%q) succeeded, want a malformed-ref error", arg)
+		}
 	}
 }

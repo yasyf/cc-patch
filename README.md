@@ -99,13 +99,23 @@ are covered by `apply --all` and the daemons.
 cc-patch install fastmode                  # a builtin, by name
 cc-patch install workflowdefault           # another builtin
 cc-patch install <owner>/<repo>[@<ref>]    # a remote pack: clone, validate, record
+cc-patch install ./my-pack                 # a local pack: validate and link
 cc-patch uninstall fastmode                # or <owner>/<repo>
 cc-patch update [<owner>/<repo>]           # re-clone remotes; builtins track cc-patch
 cc-patch list                              # installed patches + available builtins
 ```
 
+A pack you are writing yourself is local. Every directory under
+`~/.config/cc-patch/packs` is discovered on load as `local/<dir>`, so a local pack
+needs no record in cc-patch's state and your edits take effect on the next load.
+`cc-patch install <dir>` links a pack authored elsewhere into that directory;
+deleting the link uninstalls it.
+
 Each patch in a `pack.toml` is declarative. Pinned sites are the exact byte runs to
-blank in the current release, each a length-neutral edit that neutralizes one gate.
+edit in the current release. A site either sets `drop`, blanking a substring of
+`find` to spaces to neutralize a gate, or sets `replace`, substituting the whole run
+to rewrite a value; either way the edit is length-neutral, so `replace` must match
+`find` byte for byte in length.
 An optional derive adds Go RE2 patterns that re-locate the sites after an update
 renames the minified locals: `find` and `drop` select a capture group by name or
 index, `bind` exports a named capture, and `{{name}}` in a later site's pattern pins
@@ -141,7 +151,7 @@ decides when workflows run.
 
 | Command | What it does |
 |---|---|
-| `install <owner>/<repo> \| <builtin>` | Install a remote pack or a builtin. |
+| `install <owner>/<repo> \| <builtin> \| <dir>` | Install a remote pack or builtin, or link a local pack directory. |
 | `uninstall <owner>/<repo> \| <builtin>` | Remove an installed pack and its state. |
 | `update [<owner>/<repo>]` | Re-clone a remote pack, or all remotes. |
 | `list` | List installed patches and available builtins. |
