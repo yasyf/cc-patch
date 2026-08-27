@@ -7,7 +7,7 @@ toolchain go1.26.6
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/spf13/cobra v1.10.2
-	github.com/yasyf/daemonkit v0.21.0
+	github.com/yasyf/daemonkit v0.22.0
 )
 
 require (
