@@ -104,6 +104,46 @@ func TestRunClaudeTimesOut(t *testing.T) {
 	}
 }
 
+// TestRunClaudeReadsResultEvent proves the envelope is read as the stream of
+// events claude -p emits, whose result event carries the text, rather than as a
+// single object with a result field.
+func TestRunClaudeReadsResultEvent(t *testing.T) {
+	envelope := `[{"type":"system","subtype":"init"},{"type":"assistant"},{"type":"result","subtype":"success","is_error":false,"result":"the sites"}]`
+	got, err := runClaude(context.Background(), stubLauncher(t, "printf '%s' '"+envelope+"'"), "prompt")
+	if err != nil {
+		t.Fatalf("runClaude: %v", err)
+	}
+	if got != "the sites" {
+		t.Fatalf("result = %q, want %q", got, "the sites")
+	}
+}
+
+// TestRunClaudeSurfacesResultError proves an is_error result event fails loudly
+// instead of feeding its error text downstream as re-derived sites.
+func TestRunClaudeSurfacesResultError(t *testing.T) {
+	envelope := `[{"type":"result","subtype":"error_max_turns","is_error":true,"result":"ran out of turns"}]`
+	_, err := runClaude(context.Background(), stubLauncher(t, "printf '%s' '"+envelope+"'"), "prompt")
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "error_max_turns") || !strings.Contains(err.Error(), "ran out of turns") {
+		t.Fatalf("error does not carry the result event: %v", err)
+	}
+}
+
+// TestRunClaudeRequiresResultEvent proves a stream that ends without a result
+// event errors instead of returning empty text.
+func TestRunClaudeRequiresResultEvent(t *testing.T) {
+	envelope := `[{"type":"system","subtype":"init"},{"type":"assistant"}]`
+	_, err := runClaude(context.Background(), stubLauncher(t, "printf '%s' '"+envelope+"'"), "prompt")
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "no result event") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 // TestRunClaudeSurfacesStderr proves a failing claude -p reports its stderr
 // instead of a bare exit status.
 func TestRunClaudeSurfacesStderr(t *testing.T) {
@@ -116,5 +156,38 @@ func TestRunClaudeSurfacesStderr(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "boom from claude") {
 		t.Fatalf("stderr not surfaced: %v", err)
+	}
+}
+
+// TestCheckSitesAcceptsReplace proves a re-derived substitution site survives the
+// invariant check, the path a pack with a replace site depends on for drift.
+func TestCheckSitesAcceptsReplace(t *testing.T) {
+	sites := []registry.Site{{Anchor: "a", Find: []byte(`x==="bash"`), Replace: []byte(`/g/.test(x)`)[:10]}}
+	if err := checkSites(sites); err != nil {
+		t.Fatalf("checkSites: %v", err)
+	}
+}
+
+// TestCheckSitesRejectsBadSites proves each invariant pack.toml enforces at parse
+// time is enforced on Claude's output too.
+func TestCheckSitesRejectsBadSites(t *testing.T) {
+	for name, tc := range map[string]struct {
+		site registry.Site
+		want string
+	}{
+		"replace wrong length": {registry.Site{Find: []byte("abcd"), Replace: []byte("ab")}, "differ in length"},
+		"drop outside find":    {registry.Site{Find: []byte("abcd"), Drop: []byte("zz")}, "not within find"},
+		"both":                 {registry.Site{Find: []byte("abcd"), Drop: []byte("ab"), Replace: []byte("wxyz")}, "both drop and replace"},
+		"neither":              {registry.Site{Find: []byte("abcd")}, "neither drop nor replace"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := checkSites([]registry.Site{tc.site})
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want it to mention %q", err, tc.want)
+			}
+		})
 	}
 }

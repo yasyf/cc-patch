@@ -60,9 +60,10 @@ func Heal(ctx context.Context, inst claude.Install, p registry.Patch) (Result, e
 }
 
 type rederivedSite struct {
-	Anchor string `json:"anchor"`
-	Find   []byte `json:"find"`
-	Drop   []byte `json:"drop"`
+	Anchor  string `json:"anchor"`
+	Find    []byte `json:"find"`
+	Drop    []byte `json:"drop"`
+	Replace []byte `json:"replace"`
 }
 
 func rederive(ctx context.Context, inst claude.Install, p registry.Patch) ([]registry.Site, error) {
@@ -103,7 +104,7 @@ func rederive(ctx context.Context, inst claude.Install, p registry.Patch) ([]reg
 	}
 	sites := make([]registry.Site, len(derived))
 	for i, d := range derived {
-		sites[i] = registry.Site{Anchor: d.Anchor, Find: d.Find, Drop: d.Drop}
+		sites[i] = registry.Site{Anchor: d.Anchor, Find: d.Find, Drop: d.Drop, Replace: d.Replace}
 	}
 	return sites, nil
 }
@@ -115,12 +116,18 @@ func prompt(bundlePath string, p registry.Patch) string {
 
 %s
 
-For each site produce:
-- find: the minimal byte substring, unique in the file, that spans the site and contains the fragment to blank.
-- drop: a contiguous substring within find to blank to spaces; blanking it must be length-neutral (find and drop are the same length change of zero).
+For each site produce a find, plus exactly one of drop or replace — never both:
+- find: the minimal byte substring, unique in the file, that spans the site.
+- drop: a contiguous substring within find, blanked to spaces. Use this when the edit only has to neutralize something, such as a condition or a block of prose.
+- replace: the whole of find, rewritten. Use this when the edit has to substitute a value rather than delete one. It must be exactly as many bytes as find.
 
-Use your tools to grep the file and verify each find matches exactly once. Output ONLY a JSON array (no prose), where find and drop are base64-encoded raw bytes, one object per site:
+Every edit is length-neutral: the bytes you write must be the bytes you overwrite.
+
+Use your tools to grep the file and verify each find matches exactly once. Output ONLY a JSON array (no prose), where find, drop and replace are base64-encoded raw bytes, one object per site:
 [{"anchor":"<label>","find":"<base64>","drop":"<base64>"}]
+
+or, for a site that substitutes rather than neutralizes:
+[{"anchor":"<label>","find":"<base64>","replace":"<base64>"}]
 
 Patch id: %s.`, bundlePath, p.HealPrompt, p.ID)
 }
@@ -152,13 +159,25 @@ func runClaude(ctx context.Context, launcher, prompt string) (string, error) {
 		}
 		return "", fmt.Errorf("run claude -p: %w", err)
 	}
-	var env struct {
-		Result string `json:"result"`
+	var events []struct {
+		Type    string `json:"type"`
+		Subtype string `json:"subtype"`
+		IsError bool   `json:"is_error"`
+		Result  string `json:"result"`
 	}
-	if err := json.Unmarshal(out, &env); err != nil {
+	if err := json.Unmarshal(out, &events); err != nil {
 		return "", fmt.Errorf("parse claude -p envelope: %w", err)
 	}
-	return env.Result, nil
+	for _, e := range events {
+		if e.Type != "result" {
+			continue
+		}
+		if e.IsError {
+			return "", fmt.Errorf("claude -p reported %s: %s", e.Subtype, truncate(e.Result, 200))
+		}
+		return e.Result, nil
+	}
+	return "", errors.New("no result event in claude -p envelope")
 }
 
 // extractJSON pulls the JSON array out of Claude's final text, tolerating a
@@ -180,13 +199,33 @@ func truncate(s string, n int) string {
 	return s[:n] + "…"
 }
 
-func validate(inst claude.Install, p registry.Patch, sites []registry.Site) error {
-	// Claude-derived sites are untrusted: reject any drop that is not within its
-	// find before Substitutions calls blank(), which panics on a bad pair.
+// checkSites enforces the site invariants pack.toml gets at parse time on sites
+// Claude produced instead, which are untrusted: a drop outside its find panics
+// blank(), and a replace of the wrong length makes a substitution that resizes
+// the segment.
+func checkSites(sites []registry.Site) error {
 	for i, s := range sites {
-		if !bytes.Contains(s.Find, s.Drop) {
-			return fmt.Errorf("site %d: drop %q is not within find %q", i, s.Drop, s.Find)
+		switch {
+		case s.Drop != nil && s.Replace != nil:
+			return fmt.Errorf("site %d: sets both drop and replace", i)
+		case s.Replace != nil:
+			if len(s.Replace) != len(s.Find) {
+				return fmt.Errorf("site %d: replace (%d bytes) and find (%d bytes) differ in length", i, len(s.Replace), len(s.Find))
+			}
+		case s.Drop != nil:
+			if !bytes.Contains(s.Find, s.Drop) {
+				return fmt.Errorf("site %d: drop %q is not within find %q", i, s.Drop, s.Find)
+			}
+		default:
+			return fmt.Errorf("site %d: sets neither drop nor replace", i)
 		}
+	}
+	return nil
+}
+
+func validate(inst claude.Install, p registry.Patch, sites []registry.Site) error {
+	if err := checkSites(sites); err != nil {
+		return err
 	}
 	res, err := binpatch.Status(inst.Binary, p.SegmentName, registry.Substitutions(sites))
 	if err != nil {
