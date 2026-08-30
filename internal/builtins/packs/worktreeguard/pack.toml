@@ -24,14 +24,21 @@ segment = "__BUN"
 # The guard function itself stays as it is. It reads fields off the parse that a
 # `{kind:"too-complex"}` result does not carry, so it must keep refusing every
 # command it is actually called on; only the decision to call it moves.
-#
-# No [[patch.derive]]: the derive DSL blanks a captured group to spaces and cannot
-# express a substitution, so drift across a Claude Code update lands on
-# [patch.heal].
 [[patch.site]]
 anchor  = "worktree command guard call site"
 find    = 'let wn=r==="bash"?Wgt(lt=await dde(e),Pt,ut):null;'
 replace = 'let wn=/git/.test(e)?Wgt(lt=await dde(e),Pt,ut):0;'
+
+# Every identifier at this site is minified, so the derive carries the whole edit:
+# the guard call and the command local are captured and replayed verbatim, and only
+# the condition and the alternative are rewritten. A rename that changes the
+# command local's width breaks length-neutrality, which the derive reports rather
+# than emitting a resizing edit.
+[[patch.derive]]
+anchor   = "worktree command guard call site"
+pattern  = '(?P<lead>let \w+=)\w+==="bash"\?(?P<guard>\w+\(\w+=await \w+\((?P<cmd>\w+)\),\w+,\w+\)):null;'
+find     = 0
+replace  = '{{lead}}/git/.test({{cmd}})?{{guard}}:0;'
 
 [patch.heal]
 prompt = """

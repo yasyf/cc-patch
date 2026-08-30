@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`replace` derives.** A `[[patch.derive]]` site can now take `replace`, a
+  template rendering the substitute from `{{group}}` references, instead of
+  `drop`. Structural recovery previously only knew how to blank a captured group,
+  so a pack built on the `replace` sites added in 0.15.0 could not carry a derive
+  at all and fell straight through to heal on the first rename. The rendered
+  bytes must match `find` byte for byte in length, which the derive reports rather
+  than emitting an edit that resizes the segment. `worktreeguard` now carries one,
+  replaying the guard call and the command local verbatim while rewriting only the
+  condition and the alternative.
+
 ### Fixed
 
 - **workflowdefault re-pinned against Claude Code 2.1.251.** The pack had drifted
