@@ -215,10 +215,6 @@ func TestUninstallRemovesEveryLabelAndTheProgramCopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sidecar := target + ".meta.json"
-	if err := os.WriteFile(sidecar, []byte("{}"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	recorder := &recordingLaunchd{}
 	useLaunchd(t, recorder)
 
@@ -231,10 +227,8 @@ func TestUninstallRemovesEveryLabelAndTheProgramCopy(t *testing.T) {
 	if len(recorder.applied) != 0 {
 		t.Fatalf("applied agents = %#v, want none", recorder.applied)
 	}
-	for _, path := range []string{target, sidecar} {
-		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
-			t.Errorf("%q survived Uninstall", path)
-		}
+	if _, err := os.Lstat(target); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("%q survived Uninstall", target)
 	}
 }
 

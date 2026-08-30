@@ -148,17 +148,14 @@ func placeProgram() error {
 	return nil
 }
 
-// removeProgram deletes the program copy and the sidecar daemonkit v0.20 wrote
-// beside it. An absent file is not a failure.
+// removeProgram deletes the program copy. An absent file is not a failure.
 func removeProgram() error {
 	target, err := programPath()
 	if err != nil {
 		return err
 	}
-	for _, path := range []string{target, target + ".meta.json"} {
-		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("remove program %q: %w", path, err)
-		}
+	if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove program %q: %w", target, err)
 	}
 	return nil
 }
