@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Heal escalation could never run.** `claude -p --output-format json` emits an
+  array of stream events whose final `result` event carries the text; cc-patch
+  expected a bare `{"result": …}` object, so every re-derivation died on `parse
+  claude -p envelope: json: cannot unmarshal array into Go value of type struct
+  { Result string }` before reaching Claude's answer. `runClaude` now reads the
+  event stream, and an `is_error` result fails loudly instead of being handed
+  downstream as re-derived sites.
+- **Heal could not re-derive a `replace` site.** The prompt only specified the
+  `find`/`drop` contract and the decoded site only carried `Drop`, so a pack
+  built on the `replace` sites added in 0.15.0 had no recovery path at all when
+  an update drifted it. The contract now offers `drop` or `replace`, and the
+  same invariants `pack.toml` enforces at parse time — exactly one of the two, a
+  drop within its find, a replace the same length as its find — are enforced on
+  Claude's output.
+
 ## [0.16.0] - 2026-08-29
 
 ### Added
