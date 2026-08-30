@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
-	"strconv"
 
 	"github.com/yasyf/daemonkit/durable"
 	"github.com/yasyf/daemonkit/launchd"
@@ -104,11 +103,7 @@ func Install(ctx context.Context, inst claude.Install) error {
 func Uninstall(ctx context.Context) error {
 	var errs []error
 	for _, label := range Labels() {
-		err := removeAgent(ctx, label)
-		if errors.Is(err, launchd.ErrNotOwned) {
-			err = removeLegacyAgent(ctx, label)
-		}
-		if err != nil {
+		if err := removeAgent(ctx, label); err != nil {
 			errs = append(errs, fmt.Errorf("remove daemon agent %q: %w", label, err))
 		}
 	}
@@ -120,26 +115,6 @@ func Uninstall(ctx context.Context) error {
 
 // Labels returns the installed agents' launchd labels.
 func Labels() []string { return []string{watchLabel, healLabel} }
-
-// removeLegacyAgent boots out and deletes a plist written by cc-patch before
-// daemonkit v0.21, which carries no ownership marker for launchd.Remove to
-// prove. These two labels are cc-patch's own, so a missing marker dates the
-// plist rather than making it a third party's.
-func removeLegacyAgent(ctx context.Context, label string) error {
-	path, err := launchd.Agent{Label: label}.PlistPath()
-	if err != nil {
-		return err
-	}
-	// A label launchd does not know reports failure indistinguishably from one
-	// it refused, and deleting the plist is what keeps the agent from coming
-	// back at the next login, so only that step fails the removal.
-	target := "gui/" + strconv.Itoa(os.Getuid()) + "/" + label
-	_, _, _ = launchctl(ctx, "/bin/launchctl", "bootout", target)
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("remove legacy agent plist %q: %w", path, err)
-	}
-	return nil
-}
 
 // placeProgram makes the version-stable program path hold this executable's
 // bytes, writing only when it does not already, so re-converging a settled

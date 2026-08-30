@@ -238,42 +238,6 @@ func TestUninstallRemovesEveryLabelAndTheProgramCopy(t *testing.T) {
 	}
 }
 
-// TestUninstallFallsBackToLegacyRemovalOnErrNotOwned covers the markerless
-// plists every pre-v0.21 cc-patch install left behind: launchd.Remove refuses
-// them, and without the fallback both agents stay loaded forever.
-func TestUninstallFallsBackToLegacyRemovalOnErrNotOwned(t *testing.T) {
-	sandbox(t)
-	plists := make(map[string]string, len(Labels()))
-	for _, label := range Labels() {
-		path, err := launchd.Agent{Label: label}.PlistPath()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte("<plist>markerless</plist>"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		plists[label] = path
-	}
-	useLaunchd(t, &recordingLaunchd{removeErr: launchd.ErrNotOwned})
-	runner := &recordingLaunchctl{}
-	useLaunchctl(t, runner)
-
-	if err := Uninstall(t.Context()); err != nil {
-		t.Fatalf("Uninstall error = %v, want the legacy removal to succeed", err)
-	}
-	for label, path := range plists {
-		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
-			t.Errorf("legacy plist for %q survived: %v", label, err)
-		}
-		if !runner.bootedOut(label) {
-			t.Errorf("%q was never booted out; calls = %#v", label, runner.calls)
-		}
-	}
-}
-
 func TestUninstallAttemptsEveryLabelAndJoinsFailures(t *testing.T) {
 	sandbox(t)
 	removeErr := errors.New("remove failed")
@@ -316,28 +280,6 @@ func useLaunchd(t *testing.T, recorder *recordingLaunchd) {
 	previousApply, previousRemove := applyAgent, removeAgent
 	applyAgent, removeAgent = recorder.apply, recorder.remove
 	t.Cleanup(func() { applyAgent, removeAgent = previousApply, previousRemove })
-}
-
-type recordingLaunchctl struct {
-	calls [][]string
-}
-
-func (r *recordingLaunchctl) run(_ context.Context, path string, args ...string) (string, int, error) {
-	r.calls = append(r.calls, append([]string{path}, args...))
-	return "", 0, nil
-}
-
-func (r *recordingLaunchctl) bootedOut(label string) bool {
-	return slices.ContainsFunc(r.calls, func(call []string) bool {
-		return len(call) == 3 && call[1] == "bootout" && strings.HasSuffix(call[2], "/"+label)
-	})
-}
-
-func useLaunchctl(t *testing.T, runner *recordingLaunchctl) {
-	t.Helper()
-	previous := launchctl
-	launchctl = runner.run
-	t.Cleanup(func() { launchctl = previous })
 }
 
 // sandbox relocates every daemonkit-reached path — the program copy, the plist
