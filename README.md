@@ -19,6 +19,10 @@ gate — the description text that forbids dynamic workflows unless the user typ
 "ultracode" or asked for one in their own words — so a standing CLAUDE.md opt-in
 governs, without ultracode's forced xhigh effort.
 
+A third, **worktreeguard**, narrows the guard that refuses shell commands in a
+worktree-isolated agent session, so it stops rejecting compound commands that
+never touch git.
+
 [![CI](https://img.shields.io/github/actions/workflow/status/yasyf/cc-patch/ci.yml?branch=main&label=ci)](https://github.com/yasyf/cc-patch/actions/workflows/ci.yml)
 
 ## Get started
@@ -98,6 +102,7 @@ are covered by `apply --all` and the daemons.
 ```bash
 cc-patch install fastmode                  # a builtin, by name
 cc-patch install workflowdefault           # another builtin
+cc-patch install worktreeguard             # and another
 cc-patch install <owner>/<repo>[@<ref>]    # a remote pack: clone, validate, record
 cc-patch install ./my-pack                 # a local pack: validate and link
 cc-patch uninstall fastmode                # or <owner>/<repo>
@@ -146,6 +151,21 @@ places that point back at it: the Ultracode paragraph's fallback sentence, and t
 ultracode-off system-reminder's claim that the gate applies again. Nothing in the
 tool description then contradicts the user's own instructions, and CLAUDE.md
 decides when workflows run.
+
+## How the worktreeguard patch works
+
+An agent session isolated in a worktree runs every bash command past a guard that
+must prove the command stays inside that worktree. The guard refuses anything the
+bash parser cannot reduce to a single simple command — every `&&` chain, loop, and
+subshell — and its call site asks only whether the shell is bash, never whether
+the command touches git. A `for` loop over `gh pr view` is therefore refused with
+"a worktree-isolated session's git operations must target its own worktree", a
+message about git, on a command containing none.
+
+The pack rewrites that call site's condition to test the raw command string for
+`git`, spending the extra bytes on a shorter `:null` alternative to stay
+length-neutral. Commands that name git still take the whole check, and the
+cwd-escape guard that runs just before it is untouched.
 
 ## Commands
 
