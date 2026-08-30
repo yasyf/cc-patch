@@ -9,7 +9,7 @@ import (
 )
 
 func TestOpen(t *testing.T) {
-	for _, name := range []string{"fastmode", "workflowdefault"} {
+	for _, name := range []string{"fastmode", "workflowdefault", "worktreeguard"} {
 		if _, ok := Open(name); !ok {
 			t.Errorf("%s builtin should resolve", name)
 		}
@@ -24,7 +24,7 @@ func TestOpen(t *testing.T) {
 
 func TestNames(t *testing.T) {
 	names := Names()
-	for _, want := range []string{"fastmode", "workflowdefault"} {
+	for _, want := range []string{"fastmode", "workflowdefault", "worktreeguard"} {
 		if !slices.Contains(names, want) {
 			t.Errorf("Names() = %v, want to contain %s", names, want)
 		}

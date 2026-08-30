@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-08-29
+
+### Added
+
+- **worktreeguard builtin.** `cc-patch install worktreeguard` narrows the guard a
+  worktree-isolated agent session runs every bash command past. The guard refuses
+  anything the bash parser cannot reduce to one simple command, and its call site
+  asks only whether the shell is bash — so a `for` loop over `gh` is refused with
+  "a worktree-isolated session's git operations must target its own worktree", a
+  message about git, on a command containing none. One length-neutral `replace`
+  site swaps that shell test for a `/git/` test on the raw command string.
+
 ## [0.15.0] - 2026-08-20
 
 ### Added
@@ -242,6 +254,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install-daemons` / `uninstall-daemons` — launchd agents that re-patch on
   auto-update (WatchPaths) and heal daily (StartCalendarInterval).
 
+[0.16.0]: https://github.com/yasyf/cc-patch/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/yasyf/cc-patch/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/yasyf/cc-patch/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/yasyf/cc-patch/compare/v0.13.0...v0.13.1

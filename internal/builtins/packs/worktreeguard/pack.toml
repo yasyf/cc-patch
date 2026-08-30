@@ -1,0 +1,60 @@
+schema = 1
+
+[[patch]]
+id      = "git-only-command-guard"
+summary = "Run the worktree isolation command guard only on commands that mention git"
+segment = "__BUN"
+
+# A worktree-isolated agent session refuses shell commands a static check cannot
+# prove stay inside its worktree. The guard opens by refusing everything the bash
+# parser hands back as `{kind:"too-complex"}` — loops, `&&` chains, subshells, a
+# heredoc that merely mentions a path — and its only call site gates on the shell
+# being bash, never on the command touching git. So
+# `for pr in 1 2 3; do gh pr view $pr; done` dies with "a worktree-isolated
+# session's git operations must target its own worktree": a message about git, on
+# a command with no git in it.
+#
+# Swap the `==="bash"` shell test for a `/git/` test on the raw command string the
+# parser is about to consume, paying for the three extra bytes out of the `:null`
+# alternative, which the following `if` reads as falsy either way. Every command
+# naming git still takes the full check, and the cwd-escape guard immediately
+# above this site is untouched. `/git/` over-matches by design (`digit`,
+# `gitlab`): a false positive runs the guard, which is the safe direction.
+#
+# The guard function itself stays as it is. It reads fields off the parse that a
+# `{kind:"too-complex"}` result does not carry, so it must keep refusing every
+# command it is actually called on; only the decision to call it moves.
+#
+# No [[patch.derive]]: the derive DSL blanks a captured group to spaces and cannot
+# express a substitution, so drift across a Claude Code update lands on
+# [patch.heal].
+[[patch.site]]
+anchor  = "worktree command guard call site"
+find    = 'let wn=r==="bash"?Wgt(lt=await dde(e),Pt,ut):null;'
+replace = 'let wn=/git/.test(e)?Wgt(lt=await dde(e),Pt,ut):0;'
+
+[patch.heal]
+prompt = """
+Claude Code refuses shell commands from a worktree-isolated agent session with a
+message of the form "<agent> is isolated in the worktree <path>, but this command
+<reason>. Refusing to run it — <its> git operations must target its own worktree."
+The guard behind it is a function taking the parsed command, the shell cwd, and the
+isolation root, returning that refusal string or null, whose first branch refuses
+anything the bash parser did not return as `{kind:"simple"}` with the reason "is
+too complex to verify that it stays inside the worktree".
+
+Locate that guard's single call site in the shell-exec path. It reads
+`let <ref>=<shell>==="bash"?<guard>(<parsed>=await <parse>(<cmd>),<cwd>,<root>):null;`
+and is immediately followed by
+`if(<ref>)return <log>(` and the template literal
+`[worktree] blocked shell exec: command guard refused (`. `<cmd>` is the raw
+command string; `<parse>` is the async bash parser returning
+`{kind:"simple"|"too-complex"}`.
+
+Output one length-neutral edit replacing the `<shell>==="bash"` condition with
+`/git/.test(<cmd>)` and shortening the `:null` alternative to `:0`, which the
+following `if` treats identically. The three bytes the longer condition takes are
+exactly the three the shorter alternative gives up; byte count in must equal byte
+count out. Edit only this call site — the guard function's own body must keep
+refusing every command it is called on.
+"""
