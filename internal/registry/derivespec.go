@@ -52,15 +52,16 @@ func (g GroupRef) resolve(re *regexp.Regexp, window []byte, m []int) ([]byte, er
 	return window[start:end], nil
 }
 
-// DeriveSiteSpec is one site of the declarative derive DSL: a Go RE2 pattern that
-// must match exactly once in the segment window, with Find and Drop selecting the
-// bytes to locate and the bytes to blank. Bind exports named captures for later
-// sites to pin against via {{name}} interpolation.
+// DeriveSiteSpec is one site of the declarative derive DSL: a pattern matching
+// once in the window, Find selecting the bytes to locate, and exactly one of Drop
+// (a group within Find to blank) or Replace (a {{group}} template rendering Find's
+// substitute). Bind exports captures for a later pattern's {{name}}.
 type DeriveSiteSpec struct {
 	Anchor     string
 	PatternSrc string
 	Find       GroupRef
-	Drop       GroupRef
+	Drop       *GroupRef
+	Replace    string
 	Bind       []string
 }
 
@@ -89,6 +90,25 @@ func interpolate(src string, bound map[string][]byte) (string, error) {
 	return out, nil
 }
 
+// expand renders a Replace template, substituting each {{name}} with its raw
+// bytes rather than the QuoteMeta form interpolate produces for patterns.
+func expand(src string, vals map[string][]byte) ([]byte, error) {
+	var missing string
+	out := interpToken.ReplaceAllStringFunc(src, func(tok string) string {
+		name := tok[2 : len(tok)-2]
+		v, ok := vals[name]
+		if !ok {
+			missing = name
+			return tok
+		}
+		return string(v)
+	})
+	if missing != "" {
+		return nil, fmt.Errorf("replace {{%s}} is neither a group in this pattern nor bound by an earlier site", missing)
+	}
+	return []byte(out), nil
+}
+
 // Validate checks the spec statically: every {{name}} is bound by an earlier
 // site, every pattern compiles, and every group ref resolves. It cannot run the
 // derive (the interpolated values aren't known until match time), so it probes
@@ -110,8 +130,21 @@ func (spec DeriveSpec) Validate() error {
 		if _, err := s.Find.index(re); err != nil {
 			return fmt.Errorf("derive site %d (%q): find %w", i, s.Anchor, err)
 		}
-		if _, err := s.Drop.index(re); err != nil {
-			return fmt.Errorf("derive site %d (%q): drop %w", i, s.Anchor, err)
+		switch {
+		case s.Drop != nil && s.Replace != "":
+			return fmt.Errorf("derive site %d (%q): sets both drop and replace", i, s.Anchor)
+		case s.Drop != nil:
+			if _, err := s.Drop.index(re); err != nil {
+				return fmt.Errorf("derive site %d (%q): drop %w", i, s.Anchor, err)
+			}
+		case s.Replace != "":
+			for _, tok := range interpToken.FindAllStringSubmatch(s.Replace, -1) {
+				if re.SubexpIndex(tok[1]) < 0 && !seen[tok[1]] {
+					return fmt.Errorf("derive site %d (%q): replace {{%s}} is neither a group in this pattern nor bound by an earlier site", i, s.Anchor, tok[1])
+				}
+			}
+		default:
+			return fmt.Errorf("derive site %d (%q): sets neither drop nor replace", i, s.Anchor)
 		}
 		for _, name := range s.Bind {
 			if re.SubexpIndex(name) < 0 {
@@ -150,12 +183,30 @@ func (spec DeriveSpec) DeriveFunc() func([]byte) ([]Site, error) {
 			if err != nil {
 				return nil, fmt.Errorf("derive %q find: %w", s.Anchor, err)
 			}
-			drop, err := s.Drop.resolve(re, window, m)
-			if err != nil {
-				return nil, fmt.Errorf("derive %q drop: %w", s.Anchor, err)
-			}
-			if !bytes.Contains(find, drop) {
-				return nil, fmt.Errorf("derive %q: drop %q is not within find %q", s.Anchor, drop, find)
+			var drop, replace []byte
+			if s.Drop != nil {
+				if drop, err = s.Drop.resolve(re, window, m); err != nil {
+					return nil, fmt.Errorf("derive %q drop: %w", s.Anchor, err)
+				}
+				if !bytes.Contains(find, drop) {
+					return nil, fmt.Errorf("derive %q: drop %q is not within find %q", s.Anchor, drop, find)
+				}
+			} else {
+				vals := map[string][]byte{}
+				for k, v := range bound {
+					vals[k] = v
+				}
+				for gi, name := range re.SubexpNames() {
+					if name != "" && m[2*gi] >= 0 {
+						vals[name] = window[m[2*gi]:m[2*gi+1]]
+					}
+				}
+				if replace, err = expand(s.Replace, vals); err != nil {
+					return nil, fmt.Errorf("derive %q: %w", s.Anchor, err)
+				}
+				if len(replace) != len(find) {
+					return nil, fmt.Errorf("derive %q: replace (%d bytes) and find (%d bytes) differ in length", s.Anchor, len(replace), len(find))
+				}
 			}
 			for _, name := range s.Bind {
 				idx := re.SubexpIndex(name)
@@ -165,11 +216,13 @@ func (spec DeriveSpec) DeriveFunc() func([]byte) ([]Site, error) {
 				}
 				bound[name] = bytes.Clone(window[start:end])
 			}
-			out = append(out, Site{
-				Anchor: s.Anchor + " (derived)",
-				Find:   bytes.Clone(find),
-				Drop:   bytes.Clone(drop),
-			})
+			site := Site{Anchor: s.Anchor + " (derived)", Find: bytes.Clone(find)}
+			if s.Drop != nil {
+				site.Drop = bytes.Clone(drop)
+			} else {
+				site.Replace = replace
+			}
+			out = append(out, site)
 		}
 		return out, nil
 	}

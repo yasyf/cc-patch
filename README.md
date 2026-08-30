@@ -122,9 +122,11 @@ edit in the current release. A site either sets `drop`, blanking a substring of
 to rewrite a value; either way the edit is length-neutral, so `replace` must match
 `find` byte for byte in length.
 An optional derive adds Go RE2 patterns that re-locate the sites after an update
-renames the minified locals: `find` and `drop` select a capture group by name or
-index, `bind` exports a named capture, and `{{name}}` in a later site's pattern pins
-it against an earlier site's exact match. An optional heal prompt lets cc-patch ask
+renames the minified locals. `find` selects a capture group by name or index, and
+each site then takes either `drop`, another group to blank, or `replace`, a
+template that renders the substitute from `{{group}}` references and must come out
+the same length as `find`. `bind` exports a named capture, and `{{name}}` in a
+later site's pattern pins it against an earlier site's exact match. An optional heal prompt lets cc-patch ask
 Claude to re-locate the sites when even the derive drifts.
 
 See [`internal/builtins/packs/fastmode/pack.toml`](internal/builtins/packs/fastmode/pack.toml)

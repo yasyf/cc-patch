@@ -3,6 +3,7 @@ package registry
 import (
 	"bytes"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/yasyf/cc-patch/internal/binpatch"
@@ -18,14 +19,14 @@ func fastmodeDeriveSpec() DeriveSpec {
 			Anchor:     "service tier",
 			PatternSrc: `(?P<gate>(?:\w+\(\)&&){2}!\w+\(\)&&\w+\(\w+\))(?P<drop>&&!!\w+\.fastMode)\)\w+="fast"`,
 			Find:       GroupByIndex(0),
-			Drop:       GroupByName("drop"),
+			Drop:       ref(GroupByName("drop")),
 			Bind:       []string{"gate"},
 		},
 		{
 			Anchor:     "beta header",
 			PatternSrc: `={{gate}}(?P<drop>&&!!\w+\.fastMode)`,
 			Find:       GroupByIndex(0),
-			Drop:       GroupByName("drop"),
+			Drop:       ref(GroupByName("drop")),
 		},
 	}}
 }
@@ -94,7 +95,7 @@ func TestDerivePinnedSitesAreLengthNeutral(t *testing.T) {
 
 func TestValidateRejectsUnboundInterpolation(t *testing.T) {
 	spec := DeriveSpec{Sites: []DeriveSiteSpec{
-		{Anchor: "x", PatternSrc: `={{gate}}`, Find: GroupByIndex(0), Drop: GroupByIndex(0)},
+		{Anchor: "x", PatternSrc: `={{gate}}`, Find: GroupByIndex(0), Drop: ref(GroupByIndex(0))},
 	}}
 	if err := spec.Validate(); err == nil {
 		t.Fatal("expected error for unbound {{gate}}")
@@ -103,7 +104,7 @@ func TestValidateRejectsUnboundInterpolation(t *testing.T) {
 
 func TestValidateRejectsMissingGroup(t *testing.T) {
 	spec := DeriveSpec{Sites: []DeriveSiteSpec{
-		{Anchor: "x", PatternSrc: `abc`, Find: GroupByName("nope"), Drop: GroupByIndex(0)},
+		{Anchor: "x", PatternSrc: `abc`, Find: GroupByName("nope"), Drop: ref(GroupByIndex(0))},
 	}}
 	if err := spec.Validate(); err == nil {
 		t.Fatal("expected error for missing named group")
@@ -112,7 +113,7 @@ func TestValidateRejectsMissingGroup(t *testing.T) {
 
 func TestDeriveRejectsMultipleMatches(t *testing.T) {
 	spec := DeriveSpec{Sites: []DeriveSiteSpec{
-		{Anchor: "x", PatternSrc: `(?P<d>a)b`, Find: GroupByIndex(0), Drop: GroupByName("d")},
+		{Anchor: "x", PatternSrc: `(?P<d>a)b`, Find: GroupByIndex(0), Drop: ref(GroupByName("d"))},
 	}}
 	if _, err := spec.DeriveFunc()([]byte("ab-ab")); err == nil {
 		t.Fatal("expected error when pattern matches twice")
@@ -153,5 +154,72 @@ func TestDeriveDSLMatchesRealBundle(t *testing.T) {
 		if s.State == binpatch.StateMissing {
 			t.Errorf("derived site %d not found in real binary", s.Index)
 		}
+	}
+}
+
+func ref(g GroupRef) *GroupRef { return &g }
+
+func replaceSpec(pattern, replace string) DeriveSpec {
+	return DeriveSpec{Sites: []DeriveSiteSpec{
+		{Anchor: "guard", PatternSrc: pattern, Find: GroupByIndex(0), Replace: replace},
+	}}
+}
+
+// TestDeriveReplaceRendersTemplate proves a derive can substitute rather than
+// blank, replaying captured groups so a site whose every identifier is minified
+// survives a rename without falling through to heal.
+func TestDeriveReplaceRendersTemplate(t *testing.T) {
+	spec := replaceSpec(`(?P<lead>let \w+=)\w+==="bash"\?(?P<guard>\w+\((?P<cmd>\w+)\)):null;`, `{{lead}}/git/.test({{cmd}})?{{guard}}:0;`)
+	if err := spec.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	sites, err := spec.DeriveFunc()([]byte(`x;let wn=r==="bash"?Wgt(e):null;y`))
+	if err != nil {
+		t.Fatalf("derive: %v", err)
+	}
+	if got, want := string(sites[0].Find), `let wn=r==="bash"?Wgt(e):null;`; got != want {
+		t.Fatalf("find = %q, want %q", got, want)
+	}
+	if got, want := string(sites[0].Replace), `let wn=/git/.test(e)?Wgt(e):0;`; got != want {
+		t.Fatalf("replace = %q, want %q", got, want)
+	}
+	if sites[0].Drop != nil {
+		t.Fatalf("replace site carries a drop: %q", sites[0].Drop)
+	}
+}
+
+// TestDeriveReplaceRejectsLengthChange proves a rename that widens a captured
+// group is reported instead of yielding an edit that resizes the segment.
+func TestDeriveReplaceRejectsLengthChange(t *testing.T) {
+	spec := replaceSpec(`(?P<lead>let \w+=)\w+==="bash"\?(?P<guard>\w+\((?P<cmd>\w+)\)):null;`, `{{lead}}/git/.test({{cmd}})?{{guard}}:0;`)
+	_, err := spec.DeriveFunc()([]byte(`let wn=r==="bash"?Wgt(eee):null;`))
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "differ in length") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestValidateRejectsMalformedReplaceSites proves the drop/replace invariants are
+// caught statically rather than at derive time against a user's binary.
+func TestValidateRejectsMalformedReplaceSites(t *testing.T) {
+	for name, tc := range map[string]struct {
+		site DeriveSiteSpec
+		want string
+	}{
+		"unknown token": {DeriveSiteSpec{PatternSrc: `(?P<a>x)`, Find: GroupByIndex(0), Replace: `{{nope}}`}, "neither a group in this pattern"},
+		"both":          {DeriveSiteSpec{PatternSrc: `(?P<a>x)`, Find: GroupByIndex(0), Drop: ref(GroupByName("a")), Replace: `{{a}}`}, "both drop and replace"},
+		"neither":       {DeriveSiteSpec{PatternSrc: `(?P<a>x)`, Find: GroupByIndex(0)}, "neither drop nor replace"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := DeriveSpec{Sites: []DeriveSiteSpec{tc.site}}.Validate()
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want it to mention %q", err, tc.want)
+			}
+		})
 	}
 }

@@ -54,6 +54,7 @@ type deriveSpec struct {
 	Pattern string   `toml:"pattern"`
 	Find    any      `toml:"find"`
 	Drop    any      `toml:"drop"`
+	Replace string   `toml:"replace"`
 	Bind    []string `toml:"bind"`
 }
 
@@ -198,16 +199,19 @@ func (p patchSpec) deriveFunc() (func([]byte) ([]registry.Site, error), error) {
 		if err != nil {
 			return nil, fmt.Errorf("derive %d (%q) find: %w", i, d.Anchor, err)
 		}
-		drop, err := groupRef(d.Drop)
-		if err != nil {
-			return nil, fmt.Errorf("derive %d (%q) drop: %w", i, d.Anchor, err)
-		}
 		sites[i] = registry.DeriveSiteSpec{
 			Anchor:     d.Anchor,
 			PatternSrc: d.Pattern,
 			Find:       find,
-			Drop:       drop,
+			Replace:    d.Replace,
 			Bind:       d.Bind,
+		}
+		if d.Drop != nil {
+			drop, err := groupRef(d.Drop)
+			if err != nil {
+				return nil, fmt.Errorf("derive %d (%q) drop: %w", i, d.Anchor, err)
+			}
+			sites[i].Drop = &drop
 		}
 	}
 	spec := registry.DeriveSpec{Sites: sites}
