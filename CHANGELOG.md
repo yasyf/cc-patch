@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **workflowdefault re-pinned against Claude Code 2.1.251.** The pack had drifted
+  past its own derive and could not be healed: the gate's anchors both moved
+  ("synthesizes." became "Use /workflows to watch live progress.", "When you do
+  call it," became "Every script must begin with") and its interpolation was
+  renamed. Its second site is gone for good — upstream deleted the Ultracode
+  paragraph's "revert to the opt-in rule above" sentence, so there is nothing
+  left to blank — leaving two sites. Sites and derive patterns are regenerated
+  from the binary's own bytes rather than transcribed.
+
 ## [0.16.1] - 2026-08-29
 
 ### Fixed

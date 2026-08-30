@@ -5,33 +5,24 @@ id      = "workflow-optin"
 summary = "Drop the Workflow tool's explicit-opt-in gate so a CLAUDE.md standing opt-in governs, without ultracode"
 segment = "__BUN"
 
-# The Workflow tool description (template literal `A8a`) opens with a hard gate:
-# "ONLY call this tool when the user has explicitly opted into multi-agent
-# orchestration", a closed five-bullet list of what counts as opt-in (none of
-# which is a CLAUDE.md standing instruction), and "For any other task ... do NOT
-# call this tool". Blank the whole gating block to spaces, keeping the
-# surrounding paragraphs as anchors, so nothing in the tool description forbids
-# the call and the project/user CLAUDE.md is what decides. The block's `${li}`
-# interpolation is blanked whole (5 bytes) -- blanking only the identifier would
-# leave `${}`, a template-literal syntax error.
+# The Workflow tool description opens with a hard gate: "ONLY call this tool when
+# the user has explicitly opted into multi-agent orchestration", a closed
+# five-bullet list of what counts as opt-in (none of which is a CLAUDE.md standing
+# instruction), and "For any other task ... do NOT call this tool". Blank the whole
+# gating block to spaces, keeping the surrounding paragraphs as anchors, so nothing
+# in the tool description forbids the call and the project/user CLAUDE.md is what
+# decides. The block's `${yt}` interpolation is blanked whole -- blanking only the
+# identifier would leave `${}`, a template-literal syntax error.
 [[patch.site]]
 anchor  = "workflow opt-in gate"
-find_b64 = "c3ludGhlc2l6ZXMuCgpPTkxZIGNhbGwgdGhpcyB0b29sIHdoZW4gdGhlIHVzZXIgaGFzIGV4cGxpY2l0bHkgb3B0ZWQgaW50byBtdWx0aS1hZ2VudCBvcmNoZXN0cmF0aW9uLiBXb3JrZmxvd3MgY2FuIHNwYXduIGRvemVucyBvZiBhZ2VudHMgYW5kIGNvbnN1bWUgYSBsYXJnZSBhbW91bnQgb2YgdG9rZW5zOyB0aGUgdXNlciBtdXN0IHJlcXVlc3QgdGhhdCBzY2FsZSwgbm90IGhhdmUgaXQgaW5mZXJyZWQuIEV4cGxpY2l0IG9wdC1pbiBtZWFucyBvbmUgb2Y6Ci0gVGhlIHVzZXIgaW5jbHVkZWQgdGhlIGtleXdvcmQgInVsdHJhY29kZSIgaW4gdGhlaXIgcHJvbXB0ICh5b3UnbGwgc2VlIGEgc3lzdGVtLXJlbWluZGVyIGNvbmZpcm1pbmcgaXQpLgotIFVsdHJhY29kZSBpcyBvbiBmb3IgdGhlIHNlc3Npb24gKGEgc3lzdGVtLXJlbWluZGVyIGNvbmZpcm1zIGl0KSBcdTIwMTQgc2VlICoqVWx0cmFjb2RlKiogYmVsb3cuCi0gVGhlIHVzZXIgZGlyZWN0bHkgYXNrZWQgeW91IHRvIHJ1biBhIHdvcmtmbG93IG9yIHVzZSBtdWx0aS1hZ2VudCBvcmNoZXN0cmF0aW9uIGluIHRoZWlyIG93biB3b3JkcyAoInVzZSBhIHdvcmtmbG93IiwgInJ1biBhIHdvcmtmbG93IiwgImZhbiBvdXQgYWdlbnRzIiwgIm9yY2hlc3RyYXRlIHRoaXMgd2l0aCBzdWJhZ2VudHMiKS4gVGhlIGFzayBtdXN0IGJlIGluIHRoZSB1c2VyJ3Mgd29yZHMgXHUyMDE0IGEgdGFzayB0aGF0IHdvdWxkIG1lcmVseSBiZW5lZml0IGZyb20gYSB3b3JrZmxvdyBkb2VzIG5vdCBjb3VudC4KLSBUaGUgdXNlciBpbnZva2VkIGEgc2tpbGwgb3Igc2xhc2ggY29tbWFuZCB3aG9zZSBpbnN0cnVjdGlvbnMgdGVsbCB5b3UgdG8gY2FsbCBXb3JrZmxvdy4KLSBUaGUgdXNlciBhc2tlZCB5b3UgdG8gcnVuIGEgc3BlY2lmaWMgbmFtZWQgb3Igc2F2ZWQgd29ya2Zsb3cuCgpGb3IgYW55IG90aGVyIHRhc2sgXHUyMDE0IGV2ZW4gb25lIHRoYXQgd291bGQgY2xlYXJseSBiZW5lZml0IGZyb20gcGFyYWxsZWxpc20gXHUyMDE0IGRvIE5PVCBjYWxsIHRoaXMgdG9vbC4gVXNlIHRoZSAke2xpfSB0b29sIChpZiBhdmFpbGFibGUpIGZvciBpbmRpdmlkdWFsIHN1YmFnZW50cywgb3IgYnJpZWZseSBkZXNjcmliZSB3aGF0IGEgbXVsdGktYWdlbnQgd29ya2Zsb3cgY291bGQgZG8gYW5kIGhvdyBtdWNoIGl0IHdvdWxkIHJvdWdobHkgY29zdCwgYW5kIGFzayB0aGUgdXNlciB3aGV0aGVyIHRvIHJ1biBpdC4gTWVudGlvbiB0aGV5IGNhbiBhc2sgZm9yIG9uZSB3aXRoICJ1c2UgYSB3b3JrZmxvdyIgaW4gYSBmdXR1cmUgbWVzc2FnZSB0byBza2lwIHRoZSBhc2suCgpXaGVuIHlvdSBkbyBjYWxsIGl0LA=="
-drop_b64 = "T05MWSBjYWxsIHRoaXMgdG9vbCB3aGVuIHRoZSB1c2VyIGhhcyBleHBsaWNpdGx5IG9wdGVkIGludG8gbXVsdGktYWdlbnQgb3JjaGVzdHJhdGlvbi4gV29ya2Zsb3dzIGNhbiBzcGF3biBkb3plbnMgb2YgYWdlbnRzIGFuZCBjb25zdW1lIGEgbGFyZ2UgYW1vdW50IG9mIHRva2VuczsgdGhlIHVzZXIgbXVzdCByZXF1ZXN0IHRoYXQgc2NhbGUsIG5vdCBoYXZlIGl0IGluZmVycmVkLiBFeHBsaWNpdCBvcHQtaW4gbWVhbnMgb25lIG9mOgotIFRoZSB1c2VyIGluY2x1ZGVkIHRoZSBrZXl3b3JkICJ1bHRyYWNvZGUiIGluIHRoZWlyIHByb21wdCAoeW91J2xsIHNlZSBhIHN5c3RlbS1yZW1pbmRlciBjb25maXJtaW5nIGl0KS4KLSBVbHRyYWNvZGUgaXMgb24gZm9yIHRoZSBzZXNzaW9uIChhIHN5c3RlbS1yZW1pbmRlciBjb25maXJtcyBpdCkgXHUyMDE0IHNlZSAqKlVsdHJhY29kZSoqIGJlbG93LgotIFRoZSB1c2VyIGRpcmVjdGx5IGFza2VkIHlvdSB0byBydW4gYSB3b3JrZmxvdyBvciB1c2UgbXVsdGktYWdlbnQgb3JjaGVzdHJhdGlvbiBpbiB0aGVpciBvd24gd29yZHMgKCJ1c2UgYSB3b3JrZmxvdyIsICJydW4gYSB3b3JrZmxvdyIsICJmYW4gb3V0IGFnZW50cyIsICJvcmNoZXN0cmF0ZSB0aGlzIHdpdGggc3ViYWdlbnRzIikuIFRoZSBhc2sgbXVzdCBiZSBpbiB0aGUgdXNlcidzIHdvcmRzIFx1MjAxNCBhIHRhc2sgdGhhdCB3b3VsZCBtZXJlbHkgYmVuZWZpdCBmcm9tIGEgd29ya2Zsb3cgZG9lcyBub3QgY291bnQuCi0gVGhlIHVzZXIgaW52b2tlZCBhIHNraWxsIG9yIHNsYXNoIGNvbW1hbmQgd2hvc2UgaW5zdHJ1Y3Rpb25zIHRlbGwgeW91IHRvIGNhbGwgV29ya2Zsb3cuCi0gVGhlIHVzZXIgYXNrZWQgeW91IHRvIHJ1biBhIHNwZWNpZmljIG5hbWVkIG9yIHNhdmVkIHdvcmtmbG93LgoKRm9yIGFueSBvdGhlciB0YXNrIFx1MjAxNCBldmVuIG9uZSB0aGF0IHdvdWxkIGNsZWFybHkgYmVuZWZpdCBmcm9tIHBhcmFsbGVsaXNtIFx1MjAxNCBkbyBOT1QgY2FsbCB0aGlzIHRvb2wuIFVzZSB0aGUgJHtsaX0gdG9vbCAoaWYgYXZhaWxhYmxlKSBmb3IgaW5kaXZpZHVhbCBzdWJhZ2VudHMsIG9yIGJyaWVmbHkgZGVzY3JpYmUgd2hhdCBhIG11bHRpLWFnZW50IHdvcmtmbG93IGNvdWxkIGRvIGFuZCBob3cgbXVjaCBpdCB3b3VsZCByb3VnaGx5IGNvc3QsIGFuZCBhc2sgdGhlIHVzZXIgd2hldGhlciB0byBydW4gaXQuIE1lbnRpb24gdGhleSBjYW4gYXNrIGZvciBvbmUgd2l0aCAidXNlIGEgd29ya2Zsb3ciIGluIGEgZnV0dXJlIG1lc3NhZ2UgdG8gc2tpcCB0aGUgYXNrLg=="
-
-# The Ultracode paragraph ends by pointing back at the gate ("revert to the
-# opt-in rule above") whenever ultracode is off -- the session's normal state.
-# Blank that pointer too, so no dangling reference reconstructs the gate.
-[[patch.site]]
-anchor  = "ultracode-off fallback pointer"
-find_b64 = "bWVjaGFuaWNhbCBlZGl0cy4gV2hlbiBhIHJlbWluZGVyIHNheXMgdWx0cmFjb2RlIGlzIG9mZiwgcmV2ZXJ0IHRvIHRoZSBvcHQtaW4gcnVsZSBhYm92ZS4="
-drop_b64 = "IFdoZW4gYSByZW1pbmRlciBzYXlzIHVsdHJhY29kZSBpcyBvZmYsIHJldmVydCB0byB0aGUgb3B0LWluIHJ1bGUgYWJvdmUu"
+find_b64 = "VXNlIC93b3JrZmxvd3MgdG8gd2F0Y2ggbGl2ZSBwcm9ncmVzcy4KCk9OTFkgY2FsbCB0aGlzIHRvb2wgd2hlbiB0aGUgdXNlciBoYXMgZXhwbGljaXRseSBvcHRlZCBpbnRvIG11bHRpLWFnZW50IG9yY2hlc3RyYXRpb24uIFdvcmtmbG93cyBjYW4gc3Bhd24gZG96ZW5zIG9mIGFnZW50cyBhbmQgY29uc3VtZSBhIGxhcmdlIGFtb3VudCBvZiB0b2tlbnM7IHRoZSB1c2VyIG11c3QgcmVxdWVzdCB0aGF0IHNjYWxlLCBub3QgaGF2ZSBpdCBpbmZlcnJlZC4gRXhwbGljaXQgb3B0LWluIG1lYW5zIG9uZSBvZjoKLSBUaGUgdXNlciBpbmNsdWRlZCB0aGUga2V5d29yZCAidWx0cmFjb2RlIiBpbiB0aGVpciBwcm9tcHQgKHlvdSdsbCBzZWUgYSBzeXN0ZW0tcmVtaW5kZXIgY29uZmlybWluZyBpdCkuCi0gVWx0cmFjb2RlIGlzIG9uIGZvciB0aGUgc2Vzc2lvbiAoYSBzeXN0ZW0tcmVtaW5kZXIgY29uZmlybXMgaXQpIFx1MjAxNCBzZWUgKipVbHRyYWNvZGUqKiBpbiB0aGUgd29ya2Zsb3cgYXV0aG9yaW5nIHJlZmVyZW5jZS4KLSBUaGUgdXNlciBkaXJlY3RseSBhc2tlZCB5b3UgdG8gcnVuIGEgd29ya2Zsb3cgb3IgdXNlIG11bHRpLWFnZW50IG9yY2hlc3RyYXRpb24gaW4gdGhlaXIgb3duIHdvcmRzICgidXNlIGEgd29ya2Zsb3ciLCAicnVuIGEgd29ya2Zsb3ciLCAiZmFuIG91dCBhZ2VudHMiLCAib3JjaGVzdHJhdGUgdGhpcyB3aXRoIHN1YmFnZW50cyIpLiBUaGUgYXNrIG11c3QgYmUgaW4gdGhlIHVzZXIncyB3b3JkcyBcdTIwMTQgYSB0YXNrIHRoYXQgd291bGQgbWVyZWx5IGJlbmVmaXQgZnJvbSBhIHdvcmtmbG93IGRvZXMgbm90IGNvdW50LgotIFRoZSB1c2VyIGludm9rZWQgYSBza2lsbCBvciBzbGFzaCBjb21tYW5kIHdob3NlIGluc3RydWN0aW9ucyB0ZWxsIHlvdSB0byBjYWxsIFdvcmtmbG93LgotIFRoZSB1c2VyIGFza2VkIHlvdSB0byBydW4gYSBzcGVjaWZpYyBuYW1lZCBvciBzYXZlZCB3b3JrZmxvdy4KCkZvciBhbnkgb3RoZXIgdGFzayBcdTIwMTQgZXZlbiBvbmUgdGhhdCB3b3VsZCBjbGVhcmx5IGJlbmVmaXQgZnJvbSBwYXJhbGxlbGlzbSBcdTIwMTQgZG8gTk9UIGNhbGwgdGhpcyB0b29sLiBVc2UgdGhlICR7eXR9IHRvb2wgKGlmIGF2YWlsYWJsZSkgZm9yIGluZGl2aWR1YWwgc3ViYWdlbnRzLCBvciBicmllZmx5IGRlc2NyaWJlIHdoYXQgYSBtdWx0aS1hZ2VudCB3b3JrZmxvdyBjb3VsZCBkbyBhbmQgaG93IG11Y2ggaXQgd291bGQgcm91Z2hseSBjb3N0LCBhbmQgYXNrIHRoZSB1c2VyIHdoZXRoZXIgdG8gcnVuIGl0LiBNZW50aW9uIHRoZXkgY2FuIGFzayBmb3Igb25lIHdpdGggInVzZSBhIHdvcmtmbG93IiBpbiBhIGZ1dHVyZSBtZXNzYWdlIHRvIHNraXAgdGhlIGFzay4KCkV2ZXJ5IHNjcmlwdCBtdXN0IGJlZ2luIHdpdGg="
+drop_b64 = "T05MWSBjYWxsIHRoaXMgdG9vbCB3aGVuIHRoZSB1c2VyIGhhcyBleHBsaWNpdGx5IG9wdGVkIGludG8gbXVsdGktYWdlbnQgb3JjaGVzdHJhdGlvbi4gV29ya2Zsb3dzIGNhbiBzcGF3biBkb3plbnMgb2YgYWdlbnRzIGFuZCBjb25zdW1lIGEgbGFyZ2UgYW1vdW50IG9mIHRva2VuczsgdGhlIHVzZXIgbXVzdCByZXF1ZXN0IHRoYXQgc2NhbGUsIG5vdCBoYXZlIGl0IGluZmVycmVkLiBFeHBsaWNpdCBvcHQtaW4gbWVhbnMgb25lIG9mOgotIFRoZSB1c2VyIGluY2x1ZGVkIHRoZSBrZXl3b3JkICJ1bHRyYWNvZGUiIGluIHRoZWlyIHByb21wdCAoeW91J2xsIHNlZSBhIHN5c3RlbS1yZW1pbmRlciBjb25maXJtaW5nIGl0KS4KLSBVbHRyYWNvZGUgaXMgb24gZm9yIHRoZSBzZXNzaW9uIChhIHN5c3RlbS1yZW1pbmRlciBjb25maXJtcyBpdCkgXHUyMDE0IHNlZSAqKlVsdHJhY29kZSoqIGluIHRoZSB3b3JrZmxvdyBhdXRob3JpbmcgcmVmZXJlbmNlLgotIFRoZSB1c2VyIGRpcmVjdGx5IGFza2VkIHlvdSB0byBydW4gYSB3b3JrZmxvdyBvciB1c2UgbXVsdGktYWdlbnQgb3JjaGVzdHJhdGlvbiBpbiB0aGVpciBvd24gd29yZHMgKCJ1c2UgYSB3b3JrZmxvdyIsICJydW4gYSB3b3JrZmxvdyIsICJmYW4gb3V0IGFnZW50cyIsICJvcmNoZXN0cmF0ZSB0aGlzIHdpdGggc3ViYWdlbnRzIikuIFRoZSBhc2sgbXVzdCBiZSBpbiB0aGUgdXNlcidzIHdvcmRzIFx1MjAxNCBhIHRhc2sgdGhhdCB3b3VsZCBtZXJlbHkgYmVuZWZpdCBmcm9tIGEgd29ya2Zsb3cgZG9lcyBub3QgY291bnQuCi0gVGhlIHVzZXIgaW52b2tlZCBhIHNraWxsIG9yIHNsYXNoIGNvbW1hbmQgd2hvc2UgaW5zdHJ1Y3Rpb25zIHRlbGwgeW91IHRvIGNhbGwgV29ya2Zsb3cuCi0gVGhlIHVzZXIgYXNrZWQgeW91IHRvIHJ1biBhIHNwZWNpZmljIG5hbWVkIG9yIHNhdmVkIHdvcmtmbG93LgoKRm9yIGFueSBvdGhlciB0YXNrIFx1MjAxNCBldmVuIG9uZSB0aGF0IHdvdWxkIGNsZWFybHkgYmVuZWZpdCBmcm9tIHBhcmFsbGVsaXNtIFx1MjAxNCBkbyBOT1QgY2FsbCB0aGlzIHRvb2wuIFVzZSB0aGUgJHt5dH0gdG9vbCAoaWYgYXZhaWxhYmxlKSBmb3IgaW5kaXZpZHVhbCBzdWJhZ2VudHMsIG9yIGJyaWVmbHkgZGVzY3JpYmUgd2hhdCBhIG11bHRpLWFnZW50IHdvcmtmbG93IGNvdWxkIGRvIGFuZCBob3cgbXVjaCBpdCB3b3VsZCByb3VnaGx5IGNvc3QsIGFuZCBhc2sgdGhlIHVzZXIgd2hldGhlciB0byBydW4gaXQuIE1lbnRpb24gdGhleSBjYW4gYXNrIGZvciBvbmUgd2l0aCAidXNlIGEgd29ya2Zsb3ciIGluIGEgZnV0dXJlIG1lc3NhZ2UgdG8gc2tpcCB0aGUgYXNrLg=="
 
 # The ultracode-off system-reminder (`ultra_effort_exit`) asserts that "the
 # Workflow tool's standard opt-in rule applies again" -- a rule that no longer
-# exists anywhere after site 0. It fires on every ultracode on->off transition,
-# so a model receiving it could re-infer the gate from the assertion alone.
-# Blank the claim, keeping "Ultracode is off —" so the reminder still
+# exists anywhere after the site above. It fires on every ultracode on->off
+# transition, so a model receiving it could re-infer the gate from the assertion
+# alone. Blank the claim, keeping "Ultracode is off —" so the reminder still
 # reports the transition.
 [[patch.site]]
 anchor  = "ultracode-off reminder gate claim"
@@ -40,13 +31,7 @@ drop_b64 = "IHRoZSBXb3JrZmxvdyB0b29sJ3Mgc3RhbmRhcmQgb3B0LWluIHJ1bGUgYXBwbGllcyBh
 
 [[patch.derive]]
 anchor  = "workflow opt-in gate"
-pattern = '(?s)synthesizes\.\n\n(?P<drop>ONLY call this tool [^`]*?to skip the ask\.)\n\nWhen you do call it,'
-find    = 0
-drop    = "drop"
-
-[[patch.derive]]
-anchor  = "ultracode-off fallback pointer"
-pattern = 'mechanical edits\.(?P<drop> When a reminder says ultracode is off, revert to the opt-in rule above\.)'
+pattern = '(?s)Use /workflows to watch live progress\.\n\n(?P<drop>ONLY call this tool [^`]*?to skip the ask\.)\n\nEvery script must begin with'
 find    = 0
 drop    = "drop"
 
@@ -67,17 +52,14 @@ sites:
    list of what counts as opt-in, through the paragraph that starts "For any other
    task" and forbids calling the tool for anything else, ending at "to skip the
    ask." Output an edit that blanks that whole run to spaces, anchored on the
-   unchanged sentences before and after it (the paragraph ending "what
-   synthesizes." and the paragraph starting "When you do call it,"). Any `${...}`
-   interpolation inside the run must be blanked whole -- blanking only its
-   identifier leaves `${}`, which is a syntax error.
-2. The Ultracode paragraph's trailing sentence telling the model to fall back to
-   that gate when ultracode is off. Blank that sentence to spaces, keeping the
-   preceding sentence's terminating period.
-3. The ultracode-off system-reminder, whose content asserts that the Workflow
+   unchanged sentences before and after it (the sentence ending "Use /workflows to
+   watch live progress." and the paragraph starting "Every script must begin
+   with"). Any `${...}` interpolation inside the run must be blanked whole --
+   blanking only its identifier leaves `${}`, which is a syntax error.
+2. The ultracode-off system-reminder, whose content asserts that the Workflow
    tool's standard opt-in rule "applies again". Blank that claim to spaces,
    keeping the "Ultracode is off" clause so the reminder still reports the
    transition.
 
-All three edits are length-neutral: same byte count in, same byte count out.
+Both edits are length-neutral: same byte count in, same byte count out.
 """
