@@ -121,6 +121,12 @@ edit in the current release. A site either sets `drop`, blanking a substring of
 `find` to spaces to neutralize a gate, or sets `replace`, substituting the whole run
 to rewrite a value; either way the edit is length-neutral, so `replace` must match
 `find` byte for byte in length.
+A site can instead set `pool_find` and `pool_replace`, the old and new string of an
+entry in the JavaScriptCore constant pool a Bun-compiled binary carries. That entry
+holds a length and a precomputed hash alongside the characters, so cc-patch rewrites
+all three and pads back out to the width the old string occupied, refusing a
+replacement too wide for it. Reach for this when the JS source spelling a literal is
+retained but dead: the pool is deduplicated, so its entry is what actually runs.
 An optional derive adds Go RE2 patterns that re-locate the sites after an update
 renames the minified locals. `find` selects a capture group by name or index, and
 each site then takes either `drop`, another group to blank, or `replace`, a

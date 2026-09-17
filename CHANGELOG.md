@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Pool sites.** A `[[patch.site]]` can set `pool_find` / `pool_replace`, the old
+  and new string of an entry in the JavaScriptCore constant pool a Bun-compiled
+  binary carries. Claude Code 2.1.274 runs bytecode against a deduplicated pool, so
+  a pack rewriting the retained JS source can report `patched` and change nothing:
+  one entry backs every occurrence of a literal, and the source spelling it is dead
+  weight. `drop` and `replace` cannot reach that entry, which holds a 24-bit length
+  and the hash WTF precomputes for the string ahead of the characters. cc-patch now
+  writes the new length, recomputes the hash and pads back out to the old width,
+  refusing a replacement too wide to fit. The hash is RapidHash, not the
+  SuperFastHash the `StringHasher` name still suggests, and `internal/jscpool` is
+  checked against entries read out of a real binary.
+
 ## [0.17.0] - 2026-08-29
 
 ### Added
