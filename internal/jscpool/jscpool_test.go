@@ -111,8 +111,12 @@ func TestRewriteShrinksInPlace(t *testing.T) {
 	if length != 4 {
 		t.Errorf("length = %d, want 4", length)
 	}
-	if want := Hash([]byte("bash")); hash != want {
-		t.Errorf("hash = %#06x, want %#06x — the old string's hash must not survive", hash, want)
+	// bashHash is pinned independently of Hash, so the first string this site
+	// type was written to write is checked against an outside value rather than
+	// against the implementation that produced it.
+	const bashHash = 0x2665bb
+	if hash != bashHash {
+		t.Errorf("hash = %#06x, want %#06x", hash, bashHash)
 	}
 	if hash == Hash([]byte("/bin/sh")) {
 		t.Error("hash is still the replaced string's")
