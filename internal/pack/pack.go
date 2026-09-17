@@ -13,6 +13,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/yasyf/cc-patch/internal/jscpool"
 	"github.com/yasyf/cc-patch/internal/registry"
 	"github.com/yasyf/cc-patch/internal/upstream"
 )
@@ -40,13 +41,15 @@ type upstreamSpec struct {
 }
 
 type siteSpec struct {
-	Anchor     string `toml:"anchor"`
-	Find       string `toml:"find"`
-	FindB64    string `toml:"find_b64"`
-	Drop       string `toml:"drop"`
-	DropB64    string `toml:"drop_b64"`
-	Replace    string `toml:"replace"`
-	ReplaceB64 string `toml:"replace_b64"`
+	Anchor      string `toml:"anchor"`
+	Find        string `toml:"find"`
+	FindB64     string `toml:"find_b64"`
+	Drop        string `toml:"drop"`
+	DropB64     string `toml:"drop_b64"`
+	Replace     string `toml:"replace"`
+	ReplaceB64  string `toml:"replace_b64"`
+	PoolFind    string `toml:"pool_find"`
+	PoolReplace string `toml:"pool_replace"`
 }
 
 type deriveSpec struct {
@@ -134,6 +137,9 @@ func (p patchSpec) compile(namespace string) (registry.Patch, error) {
 }
 
 func (s siteSpec) compile() (registry.Site, error) {
+	if s.PoolFind != "" || s.PoolReplace != "" {
+		return s.compilePool()
+	}
 	find, err := decodeField("find", s.Find, s.FindB64)
 	if err != nil {
 		return registry.Site{}, err
@@ -159,6 +165,23 @@ func (s siteSpec) compile() (registry.Site, error) {
 		return registry.Site{}, fmt.Errorf("drop %q is not a substring of find %q", drop, find)
 	}
 	return registry.Site{Anchor: s.Anchor, Find: find, Drop: drop}, nil
+}
+
+// compilePool renders a site that rewrites a string in the JavaScriptCore
+// constant pool, where the entry carries its own length and precomputed hash and
+// the retained JS source spelling the same literal is dead weight.
+func (s siteSpec) compilePool() (registry.Site, error) {
+	if s.Find != "" || s.FindB64 != "" || s.Replace != "" || s.ReplaceB64 != "" || s.Drop != "" || s.DropB64 != "" {
+		return registry.Site{}, errors.New("pool_find / pool_replace stand in for find / replace / drop, not alongside them")
+	}
+	if s.PoolFind == "" || s.PoolReplace == "" {
+		return registry.Site{}, errors.New("set both pool_find and pool_replace")
+	}
+	edit, err := jscpool.Rewrite(s.PoolFind, s.PoolReplace)
+	if err != nil {
+		return registry.Site{}, err
+	}
+	return registry.Site{Anchor: s.Anchor, Find: edit.Find, Replace: edit.Replace}, nil
 }
 
 // decodeOptional resolves a site field that may be absent entirely, yielding nil

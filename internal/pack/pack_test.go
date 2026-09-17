@@ -250,6 +250,87 @@ func TestPatchesReplaceSite(t *testing.T) {
 	}
 }
 
+const poolPack = `
+schema = 1
+[[patch]]
+id      = "hook-shell"
+summary = "Spawn hooks through bash"
+[[patch.site]]
+anchor       = "hook spawn (bytecode pool)"
+pool_find    = '/bin/sh'
+pool_replace = 'bash'
+`
+
+func TestPatchesPoolSite(t *testing.T) {
+	m, err := Parse([]byte(poolPack))
+	if err != nil {
+		t.Fatal(err)
+	}
+	patches, err := m.Patches("acme/demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	site := patches[0].Sites[0]
+	if site.Drop != nil {
+		t.Errorf("Drop = %q, want nil for a pool site", site.Drop)
+	}
+	wantFind := []byte{0x07, 0x00, 0x00, 0x80, 0x61, 0xcd, 0x60, 0x00, '/', 'b', 'i', 'n', '/', 's', 'h', 0x00}
+	if !bytes.Equal(site.Find, wantFind) {
+		t.Errorf("Find = %#v, want %#v", site.Find, wantFind)
+	}
+	wantReplace := []byte{0x04, 0x00, 0x00, 0x80, 0xbb, 0x65, 0x26, 0x00, 'b', 'a', 's', 'h', 0x00, 0x00, 0x00, 0x00}
+	if !bytes.Equal(site.Replace, wantReplace) {
+		t.Errorf("Replace = %#v, want %#v", site.Replace, wantReplace)
+	}
+	sub := site.Substitution()
+	if len(sub.Find) != len(sub.Replace) {
+		t.Errorf("substitution is not length-neutral: %d vs %d", len(sub.Find), len(sub.Replace))
+	}
+}
+
+func TestPatchesPoolRejects(t *testing.T) {
+	tests := []struct {
+		name, site, want string
+	}{
+		{
+			name: "replacement overruns the entry",
+			site: "pool_find = '/bin/sh'\npool_replace = '/usr/bin/bash'",
+			want: "does not fit",
+		},
+		{
+			name: "only one half set",
+			site: "pool_find = '/bin/sh'",
+			want: "set both",
+		},
+		{
+			name: "mixed with a find site",
+			site: "pool_find = '/bin/sh'\npool_replace = 'bash'\nfind = 'abcd'\nreplace = 'wxyz'",
+			want: "stand in for",
+		},
+		{
+			name: "not latin-1",
+			site: "pool_find = '/bin/sh'\npool_replace = '/bin/中'",
+			want: "not Latin-1",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			src := "schema = 1\n[[patch]]\nid = \"p\"\nsummary = \"s\"\n[[patch.site]]\nanchor = \"a\"\n" + tt.site + "\n"
+			m, err := Parse([]byte(src))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = m.Patches("acme/demo")
+			if err == nil {
+				t.Fatal("expected an error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("error %q missing %q", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestPatchesReplaceRejects(t *testing.T) {
 	tests := []struct {
 		name, site, want string
