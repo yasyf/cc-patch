@@ -5,6 +5,7 @@ import (
 
 	"github.com/yasyf/cc-patch/internal/claude"
 	"github.com/yasyf/cc-patch/internal/heal"
+	"github.com/yasyf/cc-patch/internal/registry"
 )
 
 func newHealCmd() *cobra.Command {
@@ -23,7 +24,7 @@ func newHealCmd() *cobra.Command {
 				return err
 			}
 			warn(cmd, warns)
-			for _, p := range patches {
+			return eachPatch(patches, func(p registry.Patch) error {
 				res, err := heal.Heal(cmd.Context(), inst, p)
 				if err != nil {
 					return err
@@ -39,8 +40,8 @@ func newHealCmd() *cobra.Command {
 					state += " (derived)"
 				}
 				cmd.Printf("%s  %s  %s\n", res.Version, res.PatchID, state)
-			}
-			return nil
+				return nil
+			})
 		},
 	}
 	addSelectFlags(cmd, &all, &id)

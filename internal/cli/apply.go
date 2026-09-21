@@ -5,6 +5,7 @@ import (
 
 	"github.com/yasyf/cc-patch/internal/claude"
 	"github.com/yasyf/cc-patch/internal/patcher"
+	"github.com/yasyf/cc-patch/internal/registry"
 )
 
 func newApplyCmd() *cobra.Command {
@@ -23,7 +24,7 @@ func newApplyCmd() *cobra.Command {
 				return err
 			}
 			warn(cmd, warns)
-			for _, p := range patches {
+			return eachPatch(patches, func(p registry.Patch) error {
 				if retired(cmd, p) {
 					out, err := patcher.Revert(cmd.Context(), inst, p)
 					if err != nil {
@@ -34,7 +35,7 @@ func newApplyCmd() *cobra.Command {
 						state = "retired (reverted)"
 					}
 					cmd.Printf("%s  %s  %s — %s closed\n", out.Version, out.PatchID, state, p.Upstream)
-					continue
+					return nil
 				}
 				out, err := patcher.Apply(cmd.Context(), inst, p)
 				if err != nil {
@@ -48,8 +49,8 @@ func newApplyCmd() *cobra.Command {
 					state += " (derived)"
 				}
 				cmd.Printf("%s  %s  %s\n", out.Version, out.PatchID, state)
-			}
-			return nil
+				return nil
+			})
 		},
 	}
 	addSelectFlags(cmd, &all, &id)

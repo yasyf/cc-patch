@@ -59,6 +59,7 @@ type deriveSpec struct {
 	Drop    any      `toml:"drop"`
 	Replace string   `toml:"replace"`
 	Bind    []string `toml:"bind"`
+	Pinned  bool     `toml:"pinned"`
 }
 
 type healSpec struct {
@@ -114,7 +115,7 @@ func (p patchSpec) compile(namespace string) (registry.Patch, error) {
 		}
 		sites[i] = site
 	}
-	derive, err := p.deriveFunc()
+	derive, err := p.deriveFunc(sites)
 	if err != nil {
 		return registry.Patch{}, fmt.Errorf("patch %q: %w", p.ID, err)
 	}
@@ -212,12 +213,22 @@ func decodeField(name, ascii, b64 string) ([]byte, error) {
 	}
 }
 
-func (p patchSpec) deriveFunc() (func([]byte) ([]registry.Site, error), error) {
+// deriveFunc compiles the patch's derive blocks against its pinned sites, which
+// a `pinned` block re-emits verbatim. A derive recovers a patch by replacing its
+// whole site list, so a partial one silently drops the sites it omits.
+func (p patchSpec) deriveFunc(pinned []registry.Site) (func([]byte) ([]registry.Site, error), error) {
 	if len(p.Derive) == 0 {
 		return nil, nil
 	}
+	if len(p.Derive) != len(pinned) {
+		return nil, fmt.Errorf("derive: %d sites for %d [[patch.site]] blocks (a derive must cover every site, `pinned = true` for one that cannot drift)", len(p.Derive), len(pinned))
+	}
 	sites := make([]registry.DeriveSiteSpec, len(p.Derive))
 	for i, d := range p.Derive {
+		if d.Pinned {
+			sites[i] = registry.DeriveSiteSpec{Anchor: d.Anchor, Pinned: &pinned[i]}
+			continue
+		}
 		find, err := groupRef(d.Find)
 		if err != nil {
 			return nil, fmt.Errorf("derive %d (%q) find: %w", i, d.Anchor, err)

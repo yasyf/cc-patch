@@ -55,7 +55,8 @@ func (g GroupRef) resolve(re *regexp.Regexp, window []byte, m []int) ([]byte, er
 // DeriveSiteSpec is one site of the declarative derive DSL: a pattern matching
 // once in the window, Find selecting the bytes to locate, and exactly one of Drop
 // (a group within Find to blank) or Replace (a {{group}} template rendering Find's
-// substitute). Bind exports captures for a later pattern's {{name}}.
+// substitute). Bind exports captures for a later pattern's {{name}}. Pinned stands
+// in for all of it, re-emitting the pack's own literal verbatim.
 type DeriveSiteSpec struct {
 	Anchor     string
 	PatternSrc string
@@ -63,6 +64,7 @@ type DeriveSiteSpec struct {
 	Drop       *GroupRef
 	Replace    string
 	Bind       []string
+	Pinned     *Site
 }
 
 // DeriveSpec is the ordered set of derive sites for one patch. Sites evaluate in
@@ -117,6 +119,12 @@ func expand(src string, vals map[string][]byte) ([]byte, error) {
 func (spec DeriveSpec) Validate() error {
 	seen := map[string]bool{}
 	for i, s := range spec.Sites {
+		if s.Pinned != nil {
+			if s.PatternSrc != "" || s.Drop != nil || s.Replace != "" || len(s.Bind) > 0 {
+				return fmt.Errorf("derive site %d (%q): a pinned site takes no pattern, drop, replace or bind", i, s.Anchor)
+			}
+			continue
+		}
 		for _, tok := range interpToken.FindAllStringSubmatch(s.PatternSrc, -1) {
 			if !seen[tok[1]] {
 				return fmt.Errorf("derive site %d (%q): {{%s}} not bound by an earlier site", i, s.Anchor, tok[1])
@@ -166,6 +174,10 @@ func (spec DeriveSpec) DeriveFunc() func([]byte) ([]Site, error) {
 		bound := map[string][]byte{}
 		out := make([]Site, 0, len(sites))
 		for _, s := range sites {
+			if s.Pinned != nil {
+				out = append(out, *s.Pinned)
+				continue
+			}
 			src, err := interpolate(s.PatternSrc, bound)
 			if err != nil {
 				return nil, fmt.Errorf("derive %q: %w", s.Anchor, err)

@@ -169,6 +169,10 @@ summary = "Fast mode"
 anchor = "service tier"
 find = '&&BT(_)&&!!Dn.fastMode)gn="fast"'
 drop = '&&!!Dn.fastMode'
+[[patch.site]]
+anchor = "beta header"
+find = 'ne=vl()&&UO()&&!pAe()&&BT(_)&&!!i.fastMode'
+drop = '&&!!i.fastMode'
 [[patch.derive]]
 anchor  = "service tier"
 pattern = '(?P<gate>(?:\w+\(\)&&){2}!\w+\(\)&&\w+\(\w+\))(?P<drop>&&!!\w+\.fastMode)\)\w+="fast"'
@@ -285,6 +289,75 @@ func TestPatchesPoolSite(t *testing.T) {
 	sub := site.Substitution()
 	if len(sub.Find) != len(sub.Replace) {
 		t.Errorf("substitution is not length-neutral: %d vs %d", len(sub.Find), len(sub.Replace))
+	}
+}
+
+const pinnedDerivePack = `
+schema = 1
+[[patch]]
+id = "noshadow"
+summary = "Fall back to the system tool"
+[[patch.site]]
+anchor       = "bytecode"
+pool_find    = '/bin/sh'
+pool_replace = 'bash'
+[[patch.site]]
+anchor = "source"
+find   = 'sh=${e}'
+drop   = 'sh'
+[[patch.derive]]
+anchor = "bytecode"
+pinned = true
+[[patch.derive]]
+anchor  = "source"
+pattern = '(?P<drop>sh)=\$\{\w+\}'
+find    = 0
+drop    = "drop"
+`
+
+// TestPatchesPinnedDeriveReemitsItsSite proves a derive covers every site even
+// when one of them is a pool entry no pattern can render: a derive replaces the
+// whole site list, so a site it omits is silently left unpatched.
+func TestPatchesPinnedDeriveReemitsItsSite(t *testing.T) {
+	m, err := Parse([]byte(pinnedDerivePack))
+	if err != nil {
+		t.Fatal(err)
+	}
+	patches, err := m.Patches("acme/demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := patches[0]
+	sites, err := p.Derive([]byte(`var sh=${qq};`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sites) != len(p.Sites) {
+		t.Fatalf("derived %d sites for %d pinned sites", len(sites), len(p.Sites))
+	}
+	if !bytes.Equal(sites[0].Find, p.Sites[0].Find) || !bytes.Equal(sites[0].Replace, p.Sites[0].Replace) {
+		t.Errorf("pinned derive site = %+v, want the pool site %+v verbatim", sites[0], p.Sites[0])
+	}
+	if !bytes.Equal(sites[1].Drop, []byte("sh")) {
+		t.Errorf("site 1 Drop = %q, want the pattern-derived drop", sites[1].Drop)
+	}
+}
+
+func TestPatchesRejectsPartialDerive(t *testing.T) {
+	src := strings.Replace(pinnedDerivePack, `[[patch.derive]]
+anchor = "bytecode"
+pinned = true
+`, "", 1)
+	m, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = m.Patches("acme/demo")
+	if err == nil {
+		t.Fatal("a derive covering 1 of 2 sites should not compile")
+	}
+	if !strings.Contains(err.Error(), "must cover every site") {
+		t.Errorf("error = %q, want it to name the coverage rule", err)
 	}
 }
 

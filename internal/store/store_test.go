@@ -14,10 +14,8 @@ import (
 
 func TestPutLoadRoundTripWithRawBytes(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	sites := []Site{
-		{Anchor: "a", Find: []byte(`&&BT(_)&&!!Dn.fastMode)gn="fast"`), Drop: []byte(`&&!!Dn.fastMode`)},
-	}
-	if err := Put("2.9.9", "fastmode-delegated-agents", sites); err != nil {
+	want := Site{Anchor: "a", Find: []byte(`&&BT(_)&&!!Dn.fastMode)gn="fast"`), Drop: []byte(`&&!!Dn.fastMode`)}
+	if err := Put("2.9.9", "fastmode-delegated-agents", []Site{want}); err != nil {
 		t.Fatal(err)
 	}
 	state, err := Load()
@@ -28,7 +26,10 @@ func TestPutLoadRoundTripWithRawBytes(t *testing.T) {
 	if !ok {
 		t.Fatal("override not found after Put")
 	}
-	if len(got) != 1 || !bytes.Equal(got[0].Find, sites[0].Find) || !bytes.Equal(got[0].Drop, sites[0].Drop) {
+	if len(got) != 1 {
+		t.Fatalf("got %d sites, want 1", len(got))
+	}
+	if !bytes.Equal(got[0].Find, want.Find) || !bytes.Equal(got[0].Drop, want.Drop) {
 		t.Errorf("round-trip mismatch: %+v", got)
 	}
 	if _, ok := state.Override("2.9.9", "other"); ok {
@@ -36,8 +37,37 @@ func TestPutLoadRoundTripWithRawBytes(t *testing.T) {
 	}
 }
 
+func TestPutLoadRoundTripReplaceSite(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	want := Site{
+		Anchor:  "worktree command guard call site (derived)",
+		Find:    []byte(`let Uo=r==="bash"?KDt(Sn=await xle(e),e,En,Ln):null;`),
+		Replace: []byte(`let Uo=/git/.test(e)?KDt(Sn=await xle(e),e,En,Ln):0;`),
+	}
+	if err := Put("2.1.278", "worktreeguard/git-only-command-guard", []Site{want}); err != nil {
+		t.Fatal(err)
+	}
+	state, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := state.Override("2.1.278", "worktreeguard/git-only-command-guard")
+	if !ok {
+		t.Fatal("override not found after Put")
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d sites, want 1", len(got))
+	}
+	if !bytes.Equal(got[0].Find, want.Find) || !bytes.Equal(got[0].Replace, want.Replace) {
+		t.Fatalf("round-trip mismatch: %+v", got)
+	}
+	if got[0].Drop != nil {
+		t.Errorf("drop = %q, want nil for a replace site", got[0].Drop)
+	}
+}
+
 func TestStateSchemaFingerprintPinned(t *testing.T) {
-	digest := sha256.Sum256([]byte(stateSchemaIdentity + "\x00v1\x00" + stateSchemaDescriptor))
+	digest := sha256.Sum256([]byte(stateSchemaIdentity + "\x00v2\x00" + stateSchemaDescriptor))
 	want := stateSchemaIdentity + "." + hex.EncodeToString(digest[:])
 	if stateSchemaFingerprint != want {
 		t.Fatalf("stateSchemaFingerprint = %q, want %q", stateSchemaFingerprint, want)
@@ -47,14 +77,15 @@ func TestStateSchemaFingerprintPinned(t *testing.T) {
 func TestStateEncodingIsExact(t *testing.T) {
 	data, err := encodeState(State{
 		Overrides: map[string][]Site{
-			"2.9.9/demo": {{Anchor: "a", Find: []byte("find-drop"), Drop: []byte("drop")}},
+			"2.9.9/demo":    {{Anchor: "a", Find: []byte("find-drop"), Drop: []byte("drop")}},
+			"2.9.9/rewrite": {{Anchor: "b", Find: []byte("old"), Replace: []byte("new")}},
 		},
 		Packs: []InstalledPack{{Owner: "acme", Repo: "demo", Commit: "abc"}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"schema":"dev.yasyf.cc-patch.state","schemaVersion":1,"schemaFingerprint":"dev.yasyf.cc-patch.state.3fe1393c998608169f67bdc07db3e0654dcc8825d173f02844ea09da4edffbaa","payload":{"overrides":{"2.9.9/demo":[{"anchor":"a","find":"ZmluZC1kcm9w","drop":"ZHJvcA=="}]},"packs":[{"name":"","builtin":false,"owner":"acme","repo":"demo","ref":"","commit":"abc"}]}}`
+	want := `{"schema":"dev.yasyf.cc-patch.state","schemaVersion":2,"schemaFingerprint":"dev.yasyf.cc-patch.state.c7d319d17ca60e3e9ee23b109b9d28d87c3918278a6130552da57cd28335c942","payload":{"overrides":{"2.9.9/demo":[{"anchor":"a","find":"ZmluZC1kcm9w","drop":"ZHJvcA==","replace":null}],"2.9.9/rewrite":[{"anchor":"b","find":"b2xk","drop":null,"replace":"bmV3"}]},"packs":[{"name":"","builtin":false,"owner":"acme","repo":"demo","ref":"","commit":"abc"}]}}`
 	if string(data) != want {
 		t.Fatalf("encoded state = %s, want %s", data, want)
 	}
@@ -133,10 +164,10 @@ func TestLoadRejectsNonExactState(t *testing.T) {
 		{name: "missing schema", data: strings.Replace(valid, `"schema":"`+stateSchemaIdentity+`",`, "", 1)},
 		{name: "null schema", data: strings.Replace(valid, `"schema":"`+stateSchemaIdentity+`"`, `"schema":null`, 1)},
 		{name: "wrong schema", data: strings.Replace(valid, stateSchemaIdentity, "dev.yasyf.foreign", 1)},
-		{name: "missing version", data: strings.Replace(valid, `"schemaVersion":1,`, "", 1)},
-		{name: "null version", data: strings.Replace(valid, `"schemaVersion":1`, `"schemaVersion":null`, 1)},
-		{name: "old version", data: strings.Replace(valid, `"schemaVersion":1`, `"schemaVersion":0`, 1)},
-		{name: "future version", data: strings.Replace(valid, `"schemaVersion":1`, `"schemaVersion":2`, 1)},
+		{name: "missing version", data: strings.Replace(valid, `"schemaVersion":2,`, "", 1)},
+		{name: "null version", data: strings.Replace(valid, `"schemaVersion":2`, `"schemaVersion":null`, 1)},
+		{name: "old version", data: strings.Replace(valid, `"schemaVersion":2`, `"schemaVersion":1`, 1)},
+		{name: "future version", data: strings.Replace(valid, `"schemaVersion":2`, `"schemaVersion":3`, 1)},
 		{name: "missing fingerprint", data: strings.Replace(valid, `"schemaFingerprint":"`+stateSchemaFingerprint+`",`, "", 1)},
 		{name: "null fingerprint", data: strings.Replace(valid, `"schemaFingerprint":"`+stateSchemaFingerprint+`"`, `"schemaFingerprint":null`, 1)},
 		{name: "wrong fingerprint", data: strings.Replace(valid, stateSchemaFingerprint, stateSchemaIdentity+".stale", 1)},
@@ -147,7 +178,7 @@ func TestLoadRejectsNonExactState(t *testing.T) {
 		{name: "missing packs", data: strings.Replace(valid, `,"packs":[]`, "", 1)},
 		{name: "null packs", data: strings.Replace(valid, `"packs":[]`, `"packs":null`, 1)},
 		{name: "unknown envelope field", data: strings.TrimSuffix(valid, "}") + `,"legacy":true}`},
-		{name: "duplicate envelope field", data: strings.Replace(valid, `"schemaVersion":1`, `"schemaVersion":1,"schemaVersion":1`, 1)},
+		{name: "duplicate envelope field", data: strings.Replace(valid, `"schemaVersion":2`, `"schemaVersion":2,"schemaVersion":2`, 1)},
 		{name: "unknown payload field", data: strings.Replace(valid, `"packs":[]`, `"packs":[],"legacy":true`, 1)},
 		{name: "duplicate payload field", data: strings.Replace(valid, `"packs":[]`, `"packs":[],"packs":[]`, 1)},
 		{name: "trailing JSON", data: valid + ` {}`},
@@ -158,6 +189,9 @@ func TestLoadRejectsNonExactState(t *testing.T) {
 		{name: "duplicate site field", data: stateJSON(`{"demo":[{"anchor":"a","anchor":"b","find":"Zg==","drop":"ZA=="}]}`, `[]`)},
 		{name: "empty sites", data: stateJSON(`{"2.9.9/demo":[]}`, `[]`)},
 		{name: "drop outside find", data: stateJSON(`{"2.9.9/demo":[{"anchor":"a","find":"Zg==","drop":"ZA=="}]}`, `[]`)},
+		{name: "neither drop nor replace", data: stateJSON(`{"2.9.9/demo":[{"anchor":"a","find":"Zg=="}]}`, `[]`)},
+		{name: "both drop and replace", data: stateJSON(`{"2.9.9/demo":[{"anchor":"a","find":"Zg==","drop":"Zg==","replace":"ZA=="}]}`, `[]`)},
+		{name: "replace resizes find", data: stateJSON(`{"2.9.9/demo":[{"anchor":"a","find":"Zm9v","replace":"ZA=="}]}`, `[]`)},
 		{name: "null pack", data: stateJSON(`{}`, `[null]`)},
 		{name: "missing pack field", data: stateJSON(`{}`, `[{"name":"","builtin":false,"owner":"a","repo":"b","ref":""}]`)},
 		{name: "null pack field", data: stateJSON(`{}`, `[{"name":"","builtin":false,"owner":"a","repo":"b","ref":"","commit":null}]`)},
@@ -386,7 +420,7 @@ func validStateJSON() string { return stateJSON(`{}`, `[]`) }
 
 func stateJSON(overrides, packs string) string {
 	return fmt.Sprintf(
-		`{"schema":"%s","schemaVersion":1,"schemaFingerprint":"%s","payload":{"overrides":%s,"packs":%s}}`,
+		`{"schema":"%s","schemaVersion":2,"schemaFingerprint":"%s","payload":{"overrides":%s,"packs":%s}}`,
 		stateSchemaIdentity,
 		stateSchemaFingerprint,
 		overrides,

@@ -5,32 +5,34 @@ id      = "delegated-agents"
 summary = "Fast mode for delegated Opus agents (subagents, teammates, workflow branches)"
 segment = "__BUN"
 
-# Site 1 — service tier. Blank the "&&!!<opts>.fastMode" caller-requested-fastmode
-# clause while keeping the BT(_) model-eligibility gate (still excludes sonnet/fable).
+# Site 1 — service tier. Blank only the caller-requested-fastmode clause before the
+# tier assignment; the site's complete model-eligibility chain remains intact. Its
+# own `)<local>="fast"` tail anchors the derive independently of the beta-header site.
 [[patch.site]]
 anchor = "service tier"
-find   = '&&BT(_)&&!!Dn.fastMode)gn="fast"'
-drop   = '&&!!Dn.fastMode'
+find   = 'if(Zr()&&y(()=>GE())&&!a_e()&&y(()=>Sg(Le))&&!!Bn.fastMode)kb="fast"'
+drop   = '&&!!Bn.fastMode'
 
-# Site 2 — fast-mode beta header.
+# Site 2 — fast-mode beta header. Upstream moved the negated call out of this gate
+# and into the sibling `<flag>=<gate>&&!<call>()` assignment. That
+# sibling assignment now distinguishes the site and anchors its derive.
 [[patch.site]]
 anchor = "beta header"
-find   = 'ne=vl()&&UO()&&!pAe()&&BT(_)&&!!i.fastMode'
-drop   = '&&!!i.fastMode'
+find   = 'let yq=Zr()&&y(()=>GE())&&y(()=>Sg(Le))&&!!h.fastMode,SM=yq&&!a_e(),'
+drop   = '&&!!h.fastMode'
 
-# Structural derive — tolerates the minifier renaming locals across a Claude update.
-# Site 1 captures the shared eligibility-gate chain as "gate" and exports it; site 2
-# pins off that exact chain via {{gate}} so both sites stay the same gate.
+# Structural derives tolerate the minifier renaming locals across a Claude update.
+# Each site anchors on the tail after its own fastMode clause because the two
+# eligibility chains no longer have a shared sequence to bind.
 [[patch.derive]]
 anchor  = "service tier"
-pattern = '(?P<gate>(?:\w+\(\)&&){2}!\w+\(\)&&\w+\(\w+\))(?P<drop>&&!!\w+\.fastMode)\)\w+="fast"'
+pattern = '(?P<drop>&&!!\w+\.fastMode)\)\w+="fast"'
 find    = 0
 drop    = "drop"
-bind    = ["gate"]
 
 [[patch.derive]]
 anchor  = "beta header"
-pattern = '={{gate}}(?P<drop>&&!!\w+\.fastMode)'
+pattern = '(?P<drop>&&!!\w+\.fastMode),\w+=\w+&&!\w+\(\)'
 find    = 0
 drop    = "drop"
 
@@ -38,10 +40,13 @@ drop    = "drop"
 prompt = """
 Locate the two code sites that gate fast (priority-tier) mode, then output edits that
 neutralize each gate's "the caller explicitly requested fast mode" requirement while
-leaving the model-eligibility check intact.
+leaving each site's model-eligibility chain intact. Treat the sites independently;
+their eligibility chains differ.
 
 Site 1 (service tier): a boolean AND chain ending in `&&!!<opts>.fastMode)` immediately
 followed by an assignment `<gn>="fast"`. Blank the `&&!!<opts>.fastMode` fragment.
-Site 2 (fast-mode beta header): an assignment `<ne>=<gate chain>&&!!<opts>.fastMode` whose
-gate chain contains a model-eligibility call. Blank the trailing `&&!!<opts>.fastMode`.
+Site 2 (fast-mode beta header): an assignment
+`<ne>=<gate chain>&&!!<opts>.fastMode,<flag>=<ne>&&!<call>()` whose gate chain contains
+a model-eligibility call. Blank the trailing `&&!!<opts>.fastMode` from the first
+assignment, leaving the sibling flag assignment intact.
 """

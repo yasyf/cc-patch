@@ -25,7 +25,7 @@ func overrideSites(inst claude.Install, p registry.Patch) ([]registry.Site, bool
 	}
 	sites := make([]registry.Site, len(saved))
 	for i, s := range saved {
-		sites[i] = registry.Site{Anchor: s.Anchor, Find: s.Find, Drop: s.Drop}
+		sites[i] = registry.Site{Anchor: s.Anchor, Find: s.Find, Drop: s.Drop, Replace: s.Replace}
 	}
 	return sites, true, nil
 }
@@ -108,7 +108,7 @@ func undo(subs []binpatch.Substitution) []binpatch.Substitution {
 func PersistSites(version, patchID string, sites []registry.Site) error {
 	saved := make([]store.Site, len(sites))
 	for i, s := range sites {
-		saved[i] = store.Site{Anchor: s.Anchor, Find: s.Find, Drop: s.Drop}
+		saved[i] = store.Site{Anchor: s.Anchor, Find: s.Find, Drop: s.Drop, Replace: s.Replace}
 	}
 	return store.Put(version, patchID, saved)
 }

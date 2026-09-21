@@ -15,26 +15,32 @@ segment = "__BUN"
 [patch.upstream]
 issue = "anthropics/claude-code#69736"
 
-# Two copies live in __BUN: the Bun bytecode constant pool (length-prefixed, NUL
-# padded) and the retained JS template source (`${e}` is the tool name). The bare
-# condition matches both, so each site anchors on its own trailing context.
+# Two copies live in __BUN: a deduplicated JavaScriptCore constant-pool entry that
+# the bundle's running bytecode reads, and the retained JS template source (`${e}`
+# is the tool name). A raw length-neutral drop preserves the pool entry's 24-bit
+# length while leaving the 24-bit RapidHash value that WTF precomputes from the old
+# characters. The pool site rewrites the header and characters together, recomputing
+# the hash.
+# That entry ends immediately before the interpolation, so a minifier rename cannot
+# change its characters. A pattern's TOML replace template cannot carry the entry's
+# raw binary header, so its pinned derive below re-emits the pool site verbatim.
 [[patch.site]]
-anchor   = "shadow fallback (bytecode)"
-find_b64 = "ICBpZiBbWyAhIC14ICRfY2NfYmluIF1dOyB0aGVuIGNvbW1hbmQgAA=="
-drop     = "! -x"
+anchor       = "shadow fallback (bytecode)"
+pool_find    = '  if [[ ! -x $_cc_bin ]]; then command '
+pool_replace = '  if [[      $_cc_bin ]]; then command '
 
 [[patch.site]]
 anchor = "shadow fallback (source)"
 find   = '  if [[ ! -x $_cc_bin ]]; then command ${e}'
 drop   = "! -x"
 
-# The shell text is vendor-authored and survives minification; only the
-# interpolated tool-name local can be renamed across an update.
+# Recovery replaces the whole site list, so the derive must cover both sites.
+# The first block re-emits the pinned pool site; the second matches the source
+# copy, where an update can rename the interpolated tool-name local while leaving
+# the vendor-authored shell text intact.
 [[patch.derive]]
-anchor  = "shadow fallback (bytecode)"
-pattern = '  if \[\[ (?P<drop>! -x) \$_cc_bin \]\]; then command \x00'
-find    = 0
-drop    = "drop"
+anchor = "shadow fallback (bytecode)"
+pinned = true
 
 [[patch.derive]]
 anchor  = "shadow fallback (source)"
@@ -44,15 +50,15 @@ drop    = "drop"
 
 [patch.heal]
 prompt = """
-Locate the shell function Claude Code writes into its Bash shell snapshot to shadow
-`find` and `grep` with the embedded `bfs`/`ugrep`. It resolves the CLI binary into a
-local (`_cc_bin`) and guards it with a fallback of the form
+Locate the retained JS template source for the shell function Claude Code writes
+into its Bash shell snapshot to shadow `find` and `grep` with the embedded
+`bfs`/`ugrep`. It resolves the CLI binary into a local (`_cc_bin`) and guards it
+with a fallback of the form
 `if [[ ! -x $_cc_bin ]]; then command <tool> ${1+"$@"}; return; fi`, where <tool> is
-an interpolated variable holding the shadowed tool name. Two copies exist in the
-__BUN segment: one in the Bun bytecode constant pool (the string is length-prefixed
-and followed by NUL padding) and one in the retained JS template source (the tool
-name appears as a `${...}` interpolation). Output an edit per copy that blanks the
-`! -x` test to spaces, keeping each length-neutral, so the condition degrades to
-`[[ $_cc_bin ]]` — always true for a resolved path — and every call takes the
-existing fallback to the system tool.
+an interpolated variable holding the shadowed tool name. In the __BUN segment, the
+tool name appears as a `${...}` interpolation immediately after the source fragment
+to edit. Output one length-neutral edit that blanks the `! -x` test to spaces, so
+the condition degrades to `[[ $_cc_bin ]]` — always true for a resolved path — and
+every call takes the existing fallback to the system tool. Do not edit the separate
+constant-pool copy: it is a pinned, hash-aware pool site that heal does not re-derive.
 """

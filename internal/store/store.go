@@ -18,19 +18,26 @@ import (
 
 var stateMu sync.Mutex
 
+// stateRecut is the remedy for a state document cc-patch no longer reads: the
+// packs are named by `cc-patch list` and the overrides re-derive on demand.
+const stateRecut = "delete the file, re-run `cc-patch install <pack>` per installed pack, then `cc-patch heal --all`"
+
 const (
 	stateSchemaIdentity    = "dev.yasyf.cc-patch.state"
-	stateSchemaVersion     = 1
-	stateSchemaDescriptor  = `payload{overrides:map<string<version/patchID>,array<site{anchor:string,find:bytes<nonempty>,drop:bytes<nonempty-substring-of-find>}><nonempty>>,packs:array<pack<oneof builtin{name:string<component>,builtin:true,owner:"",repo:"",ref:"",commit:""}|remote{name:"",builtin:false,owner:string<component>,repo:string<component>,ref:string,commit:string<nonempty>}>,unique(namespace)>}`
-	stateSchemaFingerprint = "dev.yasyf.cc-patch.state.3fe1393c998608169f67bdc07db3e0654dcc8825d173f02844ea09da4edffbaa"
+	stateSchemaVersion     = 2
+	stateSchemaDescriptor  = `payload{overrides:map<string<version/patchID>,array<site{anchor:string,find:bytes<nonempty>,drop:bytes<nonempty-substring-of-find>|null,replace:bytes<same-length-as-find>|null,exactly-one(drop,replace)}><nonempty>>,packs:array<pack<oneof builtin{name:string<component>,builtin:true,owner:"",repo:"",ref:"",commit:""}|remote{name:"",builtin:false,owner:string<component>,repo:string<component>,ref:string,commit:string<nonempty>}>,unique(namespace)>}`
+	stateSchemaFingerprint = "dev.yasyf.cc-patch.state.c7d319d17ca60e3e9ee23b109b9d28d87c3918278a6130552da57cd28335c942"
 )
 
-// Site is a persisted patch site. []byte fields JSON-encode as base64, so the
-// raw minified-bundle bytes round-trip safely.
+// Site is a persisted patch site: Find plus exactly one of Drop (a substring of
+// Find blanked to spaces) or Replace (Find's same-length substitute). []byte
+// fields JSON-encode as base64, so the raw minified-bundle bytes round-trip
+// safely.
 type Site struct {
-	Anchor string `json:"anchor"`
-	Find   []byte `json:"find"`
-	Drop   []byte `json:"drop"`
+	Anchor  string `json:"anchor"`
+	Find    []byte `json:"find"`
+	Drop    []byte `json:"drop"`
+	Replace []byte `json:"replace"`
 }
 
 // State is the on-disk document: heal-derived sites keyed by
@@ -64,9 +71,10 @@ type persistedPayload struct {
 }
 
 type persistedSite struct {
-	Anchor *string `json:"anchor"`
-	Find   *[]byte `json:"find"`
-	Drop   *[]byte `json:"drop"`
+	Anchor  *string `json:"anchor"`
+	Find    *[]byte `json:"find"`
+	Drop    *[]byte `json:"drop"`
+	Replace *[]byte `json:"replace"`
 }
 
 type persistedPack struct {
@@ -279,10 +287,10 @@ func decodeState(data []byte, path string) (State, error) {
 		return State{}, fmt.Errorf("state %q: schema must equal %q", path, stateSchemaIdentity)
 	}
 	if envelope.SchemaVersion == nil || *envelope.SchemaVersion != stateSchemaVersion {
-		return State{}, fmt.Errorf("state %q: schemaVersion must equal %d", path, stateSchemaVersion)
+		return State{}, fmt.Errorf("state %q: schemaVersion must equal %d; %s", path, stateSchemaVersion, stateRecut)
 	}
 	if envelope.SchemaFingerprint == nil || *envelope.SchemaFingerprint != stateSchemaFingerprint {
-		return State{}, fmt.Errorf("state %q: schemaFingerprint must equal %q", path, stateSchemaFingerprint)
+		return State{}, fmt.Errorf("state %q: schemaFingerprint must equal %q; %s", path, stateSchemaFingerprint, stateRecut)
 	}
 	if envelope.Payload == nil || envelope.Payload.Overrides == nil || envelope.Payload.Packs == nil {
 		return State{}, fmt.Errorf("state %q: payload, overrides, and packs are required", path)
@@ -298,10 +306,17 @@ func decodeState(data []byte, path string) (State, error) {
 		}
 		sites := make([]Site, len(persistedSites))
 		for i, persisted := range persistedSites {
-			if persisted.Anchor == nil || persisted.Find == nil || persisted.Drop == nil {
-				return State{}, fmt.Errorf("state %q: override %q site %d requires anchor, find, and drop", path, key, i)
+			if persisted.Anchor == nil || persisted.Find == nil {
+				return State{}, fmt.Errorf("state %q: override %q site %d requires anchor and find", path, key, i)
 			}
-			sites[i] = Site{Anchor: *persisted.Anchor, Find: *persisted.Find, Drop: *persisted.Drop}
+			site := Site{Anchor: *persisted.Anchor, Find: *persisted.Find}
+			if persisted.Drop != nil {
+				site.Drop = *persisted.Drop
+			}
+			if persisted.Replace != nil {
+				site.Replace = *persisted.Replace
+			}
+			sites[i] = site
 		}
 		state.Overrides[key] = sites
 	}
@@ -368,11 +383,18 @@ func validateState(state State) error {
 			return fmt.Errorf("override %q must contain at least one site", overrideKey)
 		}
 		for i, site := range sites {
-			if site.Find == nil || site.Drop == nil {
-				return fmt.Errorf("override %q site %d find and drop must be non-nil", overrideKey, i)
+			if len(site.Find) == 0 {
+				return fmt.Errorf("override %q site %d find must be non-empty", overrideKey, i)
 			}
-			if len(site.Find) == 0 || len(site.Drop) == 0 || !bytes.Contains(site.Find, site.Drop) {
-				return fmt.Errorf("override %q site %d drop must be a non-empty substring of find", overrideKey, i)
+			switch {
+			case (site.Drop == nil) == (site.Replace == nil):
+				return fmt.Errorf("override %q site %d must set exactly one of drop and replace", overrideKey, i)
+			case site.Drop != nil:
+				if len(site.Drop) == 0 || !bytes.Contains(site.Find, site.Drop) {
+					return fmt.Errorf("override %q site %d drop must be a non-empty substring of find", overrideKey, i)
+				}
+			case len(site.Replace) != len(site.Find):
+				return fmt.Errorf("override %q site %d replace (%d bytes) and find (%d bytes) differ in length", overrideKey, i, len(site.Replace), len(site.Find))
 			}
 		}
 	}
