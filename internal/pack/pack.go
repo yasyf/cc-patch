@@ -226,6 +226,10 @@ func (p patchSpec) deriveFunc(pinned []registry.Site) (func([]byte) ([]registry.
 	sites := make([]registry.DeriveSiteSpec, len(p.Derive))
 	for i, d := range p.Derive {
 		if d.Pinned {
+			if d.Pattern != "" || d.Find != nil || d.Drop != nil || d.Replace != "" || len(d.Bind) > 0 {
+				return nil, fmt.Errorf("derive %d (%q): pinned takes no pattern, find, drop, replace or bind", i, d.Anchor)
+			}
+			pinned[i].Pinned = true
 			sites[i] = registry.DeriveSiteSpec{Anchor: d.Anchor, Pinned: &pinned[i]}
 			continue
 		}

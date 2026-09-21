@@ -42,9 +42,13 @@ func Heal(ctx context.Context, inst claude.Install, p registry.Patch) (Result, e
 	if p.HealPrompt == "" {
 		return Result{}, err
 	}
-	sites, rerr := rederive(ctx, inst, p)
+	rederived, rerr := rederive(ctx, inst, p)
 	if rerr != nil {
 		return Result{}, fmt.Errorf("heal %s: derivation failed and Claude re-derivation failed: %w", p.ID, rerr)
+	}
+	sites, merr := healedSites(p, rederived)
+	if merr != nil {
+		return Result{}, fmt.Errorf("heal %s: %w", p.ID, merr)
 	}
 	if err := validate(inst, p, sites); err != nil {
 		return Result{}, fmt.Errorf("heal %s: Claude-derived sites rejected: %w", p.ID, err)
@@ -107,6 +111,34 @@ func rederive(ctx context.Context, inst claude.Install, p registry.Patch) ([]reg
 		sites[i] = registry.Site{Anchor: d.Anchor, Find: d.Find, Drop: d.Drop, Replace: d.Replace}
 	}
 	return sites, nil
+}
+
+// healedSites splices Claude's re-derived sites into the patch's declared set,
+// keeping each pinned site's own literal. The result becomes the version's
+// override, so a set that misses a declared site is refused rather than persisted
+// with the rest left unpatched.
+func healedSites(p registry.Patch, rederived []registry.Site) ([]registry.Site, error) {
+	var drifting []string
+	for _, s := range p.Sites {
+		if !s.Pinned {
+			drifting = append(drifting, s.Anchor)
+		}
+	}
+	if len(rederived) != len(drifting) {
+		return nil, fmt.Errorf("re-derivation returned %d sites for the %d that can drift (%s)",
+			len(rederived), len(drifting), strings.Join(drifting, ", "))
+	}
+	out := make([]registry.Site, 0, len(p.Sites))
+	next := 0
+	for _, s := range p.Sites {
+		if s.Pinned {
+			out = append(out, s)
+			continue
+		}
+		out = append(out, rederived[next])
+		next++
+	}
+	return out, nil
 }
 
 // prompt renders the pack author's HealPrompt (the task description) framed by the

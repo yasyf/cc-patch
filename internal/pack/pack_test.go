@@ -343,6 +343,35 @@ func TestPatchesPinnedDeriveReemitsItsSite(t *testing.T) {
 	}
 }
 
+// TestPatchesRejectsPinnedWithPatternFields proves a pinned block that also
+// carries pattern fields fails to compile rather than having them silently
+// dropped, which would read as a working pattern that never runs.
+func TestPatchesRejectsPinnedWithPatternFields(t *testing.T) {
+	for _, extra := range []string{
+		`pattern = 'sh=\$\{\w+\}'`,
+		"find    = 0",
+		`drop    = "drop"`,
+		`replace = '{{lead}}x'`,
+		`bind    = ["lead"]`,
+	} {
+		t.Run(extra, func(t *testing.T) {
+			src := strings.Replace(pinnedDerivePack, `anchor = "bytecode"
+pinned = true`, `anchor = "bytecode"
+pinned = true
+`+extra, 1)
+			m, err := Parse([]byte(src))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := m.Patches("acme/demo"); err == nil {
+				t.Fatal("a pinned derive carrying pattern fields should not compile")
+			} else if !strings.Contains(err.Error(), "pinned takes no") {
+				t.Errorf("error = %q, want it to name the pinned exclusivity rule", err)
+			}
+		})
+	}
+}
+
 func TestPatchesRejectsPartialDerive(t *testing.T) {
 	src := strings.Replace(pinnedDerivePack, `[[patch.derive]]
 anchor = "bytecode"

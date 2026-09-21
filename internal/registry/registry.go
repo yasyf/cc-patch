@@ -18,6 +18,9 @@ type Site struct {
 	Find    []byte
 	Drop    []byte
 	Replace []byte
+	// Pinned marks a site no update can drift, so recovery re-emits this literal
+	// verbatim rather than re-locating it.
+	Pinned bool
 }
 
 // Substitution renders the length-neutral edit for this site.

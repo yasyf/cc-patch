@@ -40,6 +40,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the pack compilation rule requiring equal derive and site counts. It catches
   the general form of noshadow's partial-recovery bug before any bytes are
   written, leaving the binary and its backup untouched.
+- **Heal no longer drops pinned sites.** When structural derivation failed,
+  noshadow's heal prompt asked Claude to re-derive only the retained JavaScript
+  source copy; cc-patch computes the constant-pool entry's hash itself. Heal
+  saved that one-site response as the version's override and reported success,
+  leaving the pinned pool edit unapplied. `registry.Site.Pinned`, set by the
+  pack's `pinned = true` derive block, now identifies sites that keep their own
+  literals. Heal merges Claude's re-derived sites into the full declared set
+  and requires exactly one returned site per site that can drift, refusing a
+  mismatched count before persisting or applying the override.
+- **Pinned derive blocks reject fields they cannot use.** A `pinned = true`
+  block silently ignored any `pattern`, `find`, `drop`, `replace`, or `bind`
+  alongside it, so a pack could carry a pattern that never ran. Pack compilation
+  now rejects each of those fields on a pinned block.
 - **noshadow left a stale hash in the constant pool.** Its raw byte edit blanked
   `! -x` without updating the entry's 24-bit `RapidHash`, so the characters and
   their precomputed hash disagreed even though the string length stayed valid.
