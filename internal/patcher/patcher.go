@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/yasyf/cc-patch/internal/binpatch"
 	"github.com/yasyf/cc-patch/internal/claude"
@@ -25,7 +26,7 @@ func overrideSites(inst claude.Install, p registry.Patch) ([]registry.Site, bool
 	}
 	sites := make([]registry.Site, len(saved))
 	for i, s := range saved {
-		sites[i] = registry.Site{Anchor: s.Anchor, Find: s.Find, Drop: s.Drop}
+		sites[i] = registry.Site{Anchor: s.Anchor, Find: s.Find, Drop: s.Drop, Replace: s.Replace}
 	}
 	return sites, true, nil
 }
@@ -108,7 +109,7 @@ func undo(subs []binpatch.Substitution) []binpatch.Substitution {
 func PersistSites(version, patchID string, sites []registry.Site) error {
 	saved := make([]store.Site, len(sites))
 	for i, s := range sites {
-		saved[i] = store.Site{Anchor: s.Anchor, Find: s.Find, Drop: s.Drop}
+		saved[i] = store.Site{Anchor: s.Anchor, Find: s.Find, Drop: s.Drop, Replace: s.Replace}
 	}
 	return store.Put(version, patchID, saved)
 }
@@ -159,5 +160,33 @@ func deriveSites(inst claude.Install, p registry.Patch) ([]registry.Site, error)
 	if err != nil {
 		return nil, err
 	}
-	return p.Derive(window)
+	sites, err := p.Derive(window)
+	if err != nil {
+		return nil, err
+	}
+	// Recovery replaces the whole site list, so a short one patches the sites it
+	// carries and leaves the rest untouched under a "patched (derived)" report.
+	if missing := uncovered(p.Sites, sites); len(missing) > 0 {
+		return nil, fmt.Errorf("derive covered %d of %d sites, leaving %q uncovered", len(sites), len(p.Sites), missing)
+	}
+	if len(sites) != len(p.Sites) {
+		return nil, fmt.Errorf("derive returned %d sites for %d pinned sites", len(sites), len(p.Sites))
+	}
+	return sites, nil
+}
+
+// uncovered names the pinned sites no derived site stands for, matching a
+// derived site back through the " (derived)" suffix DeriveSpec appends.
+func uncovered(pinned, derived []registry.Site) []string {
+	covered := make(map[string]bool, len(derived))
+	for _, d := range derived {
+		covered[strings.TrimSuffix(d.Anchor, " (derived)")] = true
+	}
+	var out []string
+	for _, p := range pinned {
+		if !covered[p.Anchor] {
+			out = append(out, p.Anchor)
+		}
+	}
+	return out
 }

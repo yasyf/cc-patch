@@ -1,6 +1,7 @@
 package heal
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -189,5 +190,89 @@ func TestCheckSitesRejectsBadSites(t *testing.T) {
 				t.Fatalf("error = %v, want it to mention %q", err, tc.want)
 			}
 		})
+	}
+}
+
+// noshadowShaped mirrors the noshadow pack: a pool site no update can drift
+// beside a source site a minifier rename can.
+func noshadowShaped() registry.Patch {
+	return registry.Patch{
+		ID: "builtin/noshadow/find-grep",
+		Sites: []registry.Site{
+			{Anchor: "bytecode", Find: []byte("pool-entry"), Replace: []byte("pool-blank"), Pinned: true},
+			{Anchor: "source", Find: []byte("x ! -x y"), Drop: []byte("! -x")},
+		},
+	}
+}
+
+// TestHealedSitesRefusesShortRederivation proves a re-derivation that leaves a
+// declared site unaccounted for is refused. Heal persists its result as the
+// version's override, so a short set would report success with the missing sites
+// unpatched for that Claude Code version.
+func TestHealedSitesRefusesShortRederivation(t *testing.T) {
+	twoDrifting := registry.Patch{
+		ID:    "acme/demo/two",
+		Sites: []registry.Site{{Anchor: "first"}, {Anchor: "second"}},
+	}
+	tests := []struct {
+		name      string
+		patch     registry.Patch
+		rederived []registry.Site
+		want      string
+	}{
+		{
+			name:      "nothing for the drifting site",
+			patch:     noshadowShaped(),
+			rederived: nil,
+			want:      "returned 0 sites for the 1",
+		},
+		{
+			name:      "only the pinned site's worth",
+			patch:     twoDrifting,
+			rederived: []registry.Site{{Anchor: "first", Find: []byte("a"), Drop: []byte("a")}},
+			want:      "returned 1 sites for the 2",
+		},
+		{
+			name:      "more sites than can drift",
+			patch:     noshadowShaped(),
+			rederived: []registry.Site{{Anchor: "a"}, {Anchor: "b"}},
+			want:      "returned 2 sites for the 1",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := healedSites(tt.patch, tt.rederived)
+			if err == nil {
+				t.Fatalf("healedSites accepted a short set: %+v", got)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("error = %q, want substring %q", err, tt.want)
+			}
+		})
+	}
+}
+
+// TestHealedSitesKeepsPinnedLiteral proves the pinned pool edit survives a heal:
+// Claude re-derives only the source site, and cc-patch supplies the pool entry
+// whose hash it computes itself.
+func TestHealedSitesKeepsPinnedLiteral(t *testing.T) {
+	p := noshadowShaped()
+	source := registry.Site{Anchor: "source (claude)", Find: []byte("x ! -x z"), Drop: []byte("! -x")}
+
+	got, err := healedSites(p, []registry.Site{source})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(p.Sites) {
+		t.Fatalf("healed %d sites, want %d", len(got), len(p.Sites))
+	}
+	if !bytes.Equal(got[0].Find, p.Sites[0].Find) || !bytes.Equal(got[0].Replace, p.Sites[0].Replace) {
+		t.Errorf("pinned site = %+v, want the pack's literal %+v", got[0], p.Sites[0])
+	}
+	if !bytes.Equal(got[1].Find, source.Find) {
+		t.Errorf("drifting site = %+v, want Claude's %+v", got[1], source)
+	}
+	if err := checkSites(got); err != nil {
+		t.Errorf("merged set fails the site invariants: %v", err)
 	}
 }

@@ -101,6 +101,7 @@ are covered by `apply --all` and the daemons.
 
 ```bash
 cc-patch install fastmode                  # a builtin, by name
+cc-patch install noshadow                  # another builtin
 cc-patch install workflowdefault           # another builtin
 cc-patch install worktreeguard             # and another
 cc-patch install <owner>/<repo>[@<ref>]    # a remote pack: clone, validate, record
@@ -132,11 +133,15 @@ renames the minified locals. `find` selects a capture group by name or index, an
 each site then takes either `drop`, another group to blank, or `replace`, a
 template that renders the substitute from `{{group}}` references and must come out
 the same length as `find`. `bind` exports a named capture, and `{{name}}` in a
-later site's pattern pins it against an earlier site's exact match. An optional heal prompt lets cc-patch ask
+later site's pattern pins it against an earlier site's exact match. For a site an
+update cannot drift, `pinned = true` re-emits the pack's pinned literal at the same
+position instead of matching a pattern; it takes no `pattern`, `find`, `drop`,
+`replace` or `bind`. A derive must cover every site of its patch, because recovery
+replaces the whole site list. An optional heal prompt lets cc-patch ask
 Claude to re-locate the sites when even the derive drifts.
 
 See [`internal/builtins/packs/fastmode/pack.toml`](internal/builtins/packs/fastmode/pack.toml)
-for a worked example, including the cross-site pin.
+for a worked example.
 
 ## How the fastmode patch works
 
@@ -147,6 +152,24 @@ asked" requirement at both gates while leaving the model-eligibility check intac
 so an Opus delegated agent qualifies on its own. The edit is verified end to end: a
 patched binary produces `usage.speed: fast` on an Opus subagent and leaves
 sonnet/fable at `standard`.
+
+## How the noshadow patch works
+
+Claude Code injects `find()` and `grep()` wrappers into every Bash shell, and
+those wrappers exec the embedded `bfs` and `ugrep`. The embedded `ugrep` can
+busy-poll stdin in `select()` and keep burning 100% CPU long after the tool call
+that spawned it has finished ([anthropics/claude-code#69736](https://github.com/anthropics/claude-code/issues/69736)).
+
+The wrapper already falls back to the system tool when its embedded binary is
+missing: `if [[ ! -x $_cc_bin ]]; then command <tool> …; return; fi`. The
+noshadow pack blanks the `! -x` test, leaving `[[ $_cc_bin ]]` — always true for
+a resolved path — so every call takes the vendor's own fallback. The tool name is
+interpolated, so one edit covers both `find` and `grep`.
+
+Two copies of that wrapper live in the bundle. The bytecode runs against a
+deduplicated constant-pool entry, so noshadow rewrites that entry as a pool site
+and recomputes the hash the pool precomputes for it; a second site edits the
+retained JavaScript template source.
 
 ## How the workflowdefault patch works
 
@@ -184,9 +207,9 @@ cwd-escape guard that runs just before it is untouched.
 | `update [<owner>/<repo>]` | Re-clone a remote pack, or all remotes. |
 | `list` | List installed patches and available builtins. |
 | `status` | Report whether each patch is applied. Read-only. |
-| `apply --all` | Patch the installed binary and re-sign it. |
+| `apply --all` | Patch the installed binary and re-sign it. Carries on past a patch that fails and exits non-zero. |
 | `restore` | Restore the pristine, vendor-signed binary from backup. |
-| `heal --all` | Re-apply, re-deriving through Claude when an update drifts a patch. |
+| `heal --all` | Re-apply, re-deriving through Claude when an update drifts a patch. Carries on past a patch that fails and exits non-zero. |
 | `install-daemons` | Install the watcher and daily heal launchd agents. |
 | `uninstall-daemons` | Remove both agents. |
 

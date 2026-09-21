@@ -4,6 +4,81 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Pinned derive sites.** A `[[patch.derive]]` can set `pinned = true` to
+  re-emit the pack's pinned site at the same position, without a pattern, for a
+  site an update cannot drift. Pack compilation now requires a derive per site,
+  because recovery replaces the whole site list; a patch with no derive at all
+  remains valid. noshadow is why: its pool entry ends before the interpolation a
+  minifier renames, and a pattern's `replace` template cannot carry that entry's
+  binary header. Pinning it keeps the bytecode edit alongside the source derive,
+  so recovery patches and persists both copies instead of only the cosmetic one.
+
+### Changed
+
+- **BREAKING: state schema v2.** The state fingerprint changed, so cc-patch
+  refuses a `~/.local/share/cc-patch/state.json` written by an earlier release.
+  The error names the remedy: delete that file, run `cc-patch install <pack>`
+  for each installed pack, then run `cc-patch heal --all`. Overrides re-derive
+  on demand; the installed pack list does not, which is why reinstalling each
+  pack is explicit.
+
+### Fixed
+
+- **Partial derives no longer leave sites unpatched.** Recovering a drifted
+  patch replaces its whole site list. Previously, recovery with a short `Derive`
+  result reported `patched (derived)` and `PersistSites` saved that list as
+  the Claude Code version's override, silently leaving omitted sites unpatched.
+  `patcher.deriveSites`, shared by `Apply` and `Status`, now rejects results that
+  do not cover every pinned site and names the uncovered anchors. Matching
+  accounts for the derive language's ` (derived)` suffix, so a site re-emitted
+  verbatim by `pinned = true` counts as covered. The guard runs at recovery time for
+  any `Derive` implementation, including patches registered in Go, alongside
+  the pack compilation rule requiring equal derive and site counts. It catches
+  the general form of noshadow's partial-recovery bug before any bytes are
+  written, leaving the binary and its backup untouched.
+- **Heal no longer drops pinned sites.** When structural derivation failed,
+  noshadow's heal prompt asked Claude to re-derive only the retained JavaScript
+  source copy; cc-patch computes the constant-pool entry's hash itself. Heal
+  saved that one-site response as the version's override and reported success,
+  leaving the pinned pool edit unapplied. `registry.Site.Pinned`, set by the
+  pack's `pinned = true` derive block, now identifies sites that keep their own
+  literals. Heal merges Claude's re-derived sites into the full declared set
+  and requires exactly one returned site per site that can drift, refusing a
+  mismatched count before persisting or applying the override.
+- **Pinned derive blocks reject fields they cannot use.** A `pinned = true`
+  block silently ignored any `pattern`, `find`, `drop`, `replace`, or `bind`
+  alongside it, so a pack could carry a pattern that never ran. Pack compilation
+  now rejects each of those fields on a pinned block.
+- **noshadow left a stale hash in the constant pool.** Its raw byte edit blanked
+  `! -x` without updating the entry's 24-bit `RapidHash`, so the characters and
+  their precomputed hash disagreed even though the string length stayed valid.
+  The bytecode copy is now a pool site, which recomputes the hash with the
+  replacement; the retained JavaScript template stays a source site.
+- **worktreeguard re-pinned against Claude Code 2.1.278.** The guard call gained
+  the raw command string as a fourth argument, so both the pinned three-argument
+  literal and its derive missed the call site. The literal now carries all four,
+  and the derive accepts either arity.
+- **fastmode re-pinned against Claude Code 2.1.278.** Upstream split the
+  service-tier and beta-header eligibility chains, moving the `!a_e()` call out
+  of the beta-header chain and into its sibling assignment. Each derive now
+  anchors on the tail after its own `fastMode` clause and the stale shared
+  `gate` binding is gone; both edits still remove only the
+  caller-requested-fastmode check.
+- **One drifted patch no longer hides the rest.** `apply --all` and `heal --all`
+  run every remaining patch after one fails, report all failures, and exit
+  non-zero at the end. A worktreeguard derivation failure had been aborting the
+  run before the later `local/fastshell/*` packs, leaving them unpatched across
+  Claude Code 2.1.275–2.1.278.
+- **Heal could not persist a `replace` override.** Heal has been able to derive a
+  `replace` site since 0.16.1, but `store.Site` carried only `anchor`, `find`
+  and `drop`, so every worktreeguard heal died on `encode state: override "…"
+  site 0 find and drop must be non-nil`. A stored site now sets exactly one of
+  `drop` and `replace`.
+
 ## [0.18.0] - 2026-09-17
 
 ### Added

@@ -60,7 +60,7 @@ func Entry(s string) ([]byte, error) {
 // Hash returns the 24-bit hash WTF stores for a Latin-1 string, the value
 // StringHasher::computeHashAndMaskTop8Bits yields.
 func Hash(chars []byte) uint32 {
-	h := uint32(rapidHash(chars) & hashMask)
+	h := uint32(rapidHash(chars) & hashMask) //nolint:gosec // hashMask bounds the value to 24 bits
 	if h == 0 {
 		return nonZeroHash
 	}

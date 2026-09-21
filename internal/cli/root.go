@@ -3,6 +3,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -56,6 +57,19 @@ func selectPatches(ctx context.Context, all bool, id string) ([]registry.Patch, 
 		return patches, warns, nil
 	}
 	return nil, nil, fmt.Errorf("specify --all or --id <patch> (see `cc-patch list`)")
+}
+
+// eachPatch runs fn over every selected patch, carrying on past a failure so one
+// drifted patch never hides the patches behind it, and joining what failed so the
+// command still exits non-zero.
+func eachPatch(patches []registry.Patch, fn func(registry.Patch) error) error {
+	var errs []error
+	for _, p := range patches {
+		if err := fn(p); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func warn(cmd *cobra.Command, errs []error) {

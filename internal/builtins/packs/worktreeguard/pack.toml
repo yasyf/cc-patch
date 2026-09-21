@@ -21,22 +21,25 @@ segment = "__BUN"
 # above this site is untouched. `/git/` over-matches by design (`digit`,
 # `gitlab`): a false positive runs the guard, which is the safe direction.
 #
-# The guard function itself stays as it is. It reads fields off the parse that a
-# `{kind:"too-complex"}` result does not carry, so it must keep refusing every
-# command it is actually called on; only the decision to call it moves.
+# The guard function itself stays as it is. Its current call receives the parse,
+# raw command string, shell cwd, and isolation root; its refusal reports that cwd
+# and isolation root. It reads fields off the parse that a `{kind:"too-complex"}`
+# result does not carry, so it must keep refusing every command it is actually
+# called on; only the decision to call it moves.
 [[patch.site]]
 anchor  = "worktree command guard call site"
-find    = 'let wn=r==="bash"?Wgt(lt=await dde(e),Pt,ut):null;'
-replace = 'let wn=/git/.test(e)?Wgt(lt=await dde(e),Pt,ut):0;'
+find    = 'let Uo=r==="bash"?KDt(Sn=await xle(e),e,En,Ln):null;'
+replace = 'let Uo=/git/.test(e)?KDt(Sn=await xle(e),e,En,Ln):0;'
 
 # Every identifier at this site is minified, so the derive carries the whole edit:
 # the guard call and the command local are captured and replayed verbatim, and only
-# the condition and the alternative are rewritten. A rename that changes the
-# command local's width breaks length-neutrality, which the derive reports rather
-# than emitting a resizing edit.
+# the condition and the alternative are rewritten. It accepts the older
+# `(parse,cwd,root)` call and the current `(parse,command,cwd,root)` call. A rename
+# that changes the command local's width breaks length-neutrality, which the derive
+# reports rather than emitting a resizing edit.
 [[patch.derive]]
 anchor   = "worktree command guard call site"
-pattern  = '(?P<lead>let \w+=)\w+==="bash"\?(?P<guard>\w+\(\w+=await \w+\((?P<cmd>\w+)\),\w+,\w+\)):null;'
+pattern  = '(?P<lead>let \w+=)\w+==="bash"\?(?P<guard>\w+\(\w+=await \w+\((?P<cmd>\w+)\)(?:,\w+){2,3}\)):null;'
 find     = 0
 replace  = '{{lead}}/git/.test({{cmd}})?{{guard}}:0;'
 
@@ -45,13 +48,16 @@ prompt = """
 Claude Code refuses shell commands from a worktree-isolated agent session with a
 message of the form "<agent> is isolated in the worktree <path>, but this command
 <reason>. Refusing to run it — <its> git operations must target its own worktree."
-The guard behind it is a function taking the parsed command, the shell cwd, and the
-isolation root, returning that refusal string or null, whose first branch refuses
-anything the bash parser did not return as `{kind:"simple"}` with the reason "is
-too complex to verify that it stays inside the worktree".
+The guard behind it is a function taking either the parsed command, shell cwd, and
+isolation root or the parsed command, raw command string, shell cwd, and isolation
+root. It returns that refusal string or null, and its first branch refuses anything
+the bash parser did not return as `{kind:"simple"}` with the reason "is too complex
+to verify that it stays inside the worktree".
 
-Locate that guard's single call site in the shell-exec path. It reads
+Locate that guard's single call site in the shell-exec path. It reads either
 `let <ref>=<shell>==="bash"?<guard>(<parsed>=await <parse>(<cmd>),<cwd>,<root>):null;`
+or
+`let <ref>=<shell>==="bash"?<guard>(<parsed>=await <parse>(<cmd>),<cmd>,<cwd>,<root>):null;`
 and is immediately followed by
 `if(<ref>)return <log>(` and the template literal
 `[worktree] blocked shell exec: command guard refused (`. `<cmd>` is the raw

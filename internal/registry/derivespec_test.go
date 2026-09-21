@@ -10,21 +10,20 @@ import (
 	"github.com/yasyf/cc-patch/internal/claude"
 )
 
-// fastmodeDeriveSpec is the DSL form of the former Go-coded deriveFastMode. It is
-// the golden fixture for the derive DSL: the fastmode pack's pack.toml must encode
-// exactly these two sites, cross-pinned via the "gate" binding.
+// fastmodeDeriveSpec is the golden fixture for the derive DSL: the fastmode
+// pack's pack.toml must encode exactly these two sites. Each anchors on the tail
+// that follows its own fastMode clause, since the two eligibility chains differ.
 func fastmodeDeriveSpec() DeriveSpec {
 	return DeriveSpec{Sites: []DeriveSiteSpec{
 		{
 			Anchor:     "service tier",
-			PatternSrc: `(?P<gate>(?:\w+\(\)&&){2}!\w+\(\)&&\w+\(\w+\))(?P<drop>&&!!\w+\.fastMode)\)\w+="fast"`,
+			PatternSrc: `(?P<drop>&&!!\w+\.fastMode)\)\w+="fast"`,
 			Find:       GroupByIndex(0),
 			Drop:       ref(GroupByName("drop")),
-			Bind:       []string{"gate"},
 		},
 		{
 			Anchor:     "beta header",
-			PatternSrc: `={{gate}}(?P<drop>&&!!\w+\.fastMode)`,
+			PatternSrc: `(?P<drop>&&!!\w+\.fastMode),\w+=\w+&&!\w+\(\)`,
 			Find:       GroupByIndex(0),
 			Drop:       ref(GroupByName("drop")),
 		},
@@ -37,8 +36,8 @@ func fastmodePatch() Patch {
 		Summary:     "Fast mode for delegated Opus agents",
 		SegmentName: "__BUN",
 		Sites: []Site{
-			{Anchor: "service tier", Find: []byte(`&&BT(_)&&!!Dn.fastMode)gn="fast"`), Drop: []byte(`&&!!Dn.fastMode`)},
-			{Anchor: "beta header", Find: []byte(`ne=vl()&&UO()&&!pAe()&&BT(_)&&!!i.fastMode`), Drop: []byte(`&&!!i.fastMode`)},
+			{Anchor: "service tier", Find: []byte(`if(Zr()&&y(()=>GE())&&!a_e()&&y(()=>Sg(Le))&&!!Bn.fastMode)kb="fast"`), Drop: []byte(`&&!!Bn.fastMode`)},
+			{Anchor: "beta header", Find: []byte(`let yq=Zr()&&y(()=>GE())&&y(()=>Sg(Le))&&!!h.fastMode,SM=yq&&!a_e(),`), Drop: []byte(`&&!!h.fastMode`)},
 		},
 		Derive: fastmodeDeriveSpec().DeriveFunc(),
 	}
@@ -52,8 +51,8 @@ func TestDeriveSpecValidates(t *testing.T) {
 
 func TestDeriveDSLToleratesRenamedLocals(t *testing.T) {
 	// Same structure as CC's bundle but every local renamed.
-	window := []byte(`...if(zz()&&qq()&&!rr()&&XT(mm)&&!!OP.fastMode)GG="fast";` +
-		`let ee=[],NE=zz()&&qq()&&!rr()&&XT(mm)&&!!IP.fastMode;if(f2)push();if(NE)hdr()...`)
+	window := []byte(`...if(zz()&&qq(()=>rr())&&!ss()&&qq(()=>tt(mm))&&!!OP.fastMode)GG="fast";` +
+		`let NE=zz()&&qq(()=>rr())&&qq(()=>tt(mm))&&!!IP.fastMode,HD=NE&&!ss(),f2=!1;if(HD)hdr()...`)
 	sites, err := fastmodeDeriveSpec().DeriveFunc()(window)
 	if err != nil {
 		t.Fatal(err)
@@ -61,13 +60,13 @@ func TestDeriveDSLToleratesRenamedLocals(t *testing.T) {
 	if len(sites) != 2 {
 		t.Fatalf("got %d sites, want 2", len(sites))
 	}
-	if got := string(sites[0].Find); got != `zz()&&qq()&&!rr()&&XT(mm)&&!!OP.fastMode)GG="fast"` {
+	if got := string(sites[0].Find); got != `&&!!OP.fastMode)GG="fast"` {
 		t.Errorf("site A find = %q", got)
 	}
 	if got := string(sites[0].Drop); got != `&&!!OP.fastMode` {
 		t.Errorf("site A drop = %q", got)
 	}
-	if got := string(sites[1].Find); got != `=zz()&&qq()&&!rr()&&XT(mm)&&!!IP.fastMode` {
+	if got := string(sites[1].Find); got != `&&!!IP.fastMode,HD=NE&&!ss()` {
 		t.Errorf("site B find = %q", got)
 	}
 	if got := string(sites[1].Drop); got != `&&!!IP.fastMode` {
