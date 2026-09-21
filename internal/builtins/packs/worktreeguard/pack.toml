@@ -71,3 +71,134 @@ exactly the three the shorter alternative gives up; byte count in must equal byt
 count out. Edit only this call site — the guard function's own body must keep
 refusing every command it is called on.
 """
+
+
+[[patch]]
+id      = "drop-raw-substring-branch"
+summary = "Stop refusing a compound command because its raw text merely contains the word git"
+segment = "__BUN"
+
+# The guard's non-simple branch tests `oxr`, which is `/git/i`, against the raw
+# command string. Any compound command whose text contains those three letters
+# anywhere is refused, whatever it does: `legitimate` in a comment, a `/git/`
+# regex literal being used to read this very binary, a PR body. The branch sits
+# in front of `yDt(e.tree)`, the structural walk that models chdirs and redirects
+# off the parse tree, so removing it does not remove analysis — it hands the
+# command to the analysis that was already there and is not textual.
+#
+# The `T$e(e)||e.tree===void 0` branch above it is untouched: a command whose
+# parse aborted still refuses, because there is no tree to walk. Only the
+# substring shortcut goes.
+#
+# Length neutrality comes from the three bytes `0&&` being paid for out of the
+# tail of the message literal, which the short-circuit makes unreachable. The
+# derive replays the captured identifiers, so a rename of `oxr`, `y` or `w` to
+# any width stays neutral by construction.
+[[patch.site]]
+anchor  = "non-simple raw-substring branch"
+find    = 'if(oxr.test(n))return y("names git in a form too complex to verify that it stays inside the worktree",w);'
+replace = 'if(0&&oxr.test(n))return y("names git in a form too complex to verify that it stays inside the workt",w);'
+
+[[patch.derive]]
+anchor   = "non-simple raw-substring branch"
+pattern  = 'if\((?P<re>\w+)\.test\((?P<cmd>\w+)\)\)return (?P<fn>\w+)\("names git in a form too complex to verify that it stays inside the worktree",(?P<alt>\w+)\);'
+find     = 0
+replace  = 'if(0&&{{re}}.test({{cmd}}))return {{fn}}("names git in a form too complex to verify that it stays inside the workt",{{alt}});'
+
+[patch.heal]
+prompt = """
+Claude Code refuses shell commands from a worktree-isolated agent session. The
+guard function takes the parsed command, the raw command string, the shell cwd
+and the isolation root, and returns a refusal string or null.
+
+Inside it, the branch handling a parse whose `kind` is not `"simple"` reads:
+
+  if(<parsed>.kind!=="simple"){
+    if(<aborted>(<parsed>)||<parsed>.tree===void 0)return <fail>("is too complex to verify that it stays inside the worktree",<split>);
+    if(<re>.test(<cmd>))return <fail>("names git in a form too complex to verify that it stays inside the worktree",<split>);
+    let <r>=<walk>(<parsed>.tree);return <r>===null?null:<fail>(<r>,<split>)
+  }
+
+`<re>` is a module-level regex equal to /git/i and `<cmd>` is the raw command
+string, so that middle line refuses on a bare substring match.
+
+Output one length-neutral edit that disables only that middle line, by
+short-circuiting its condition with `0&&` and paying for those three bytes out
+of the tail of its own message literal, which becomes unreachable. Do not touch
+the branch above it or the tree walk below it. Byte count in must equal byte
+count out.
+"""
+
+
+[[patch]]
+id      = "drop-interpreter-payload-check"
+summary = "Stop judging the text handed to a non-shell interpreter by whether it names git"
+segment = "__BUN"
+
+# POLICY REMOVAL, NOT A NARROWING. This deletes a check rather than tightening
+# one, and it is a deliberate owner decision with the cost accepted up front.
+#
+# What it permits, stated plainly: an isolated session can now reach another
+# worktree's git through an interpreter payload, for example
+#
+#   python3 -c "import subprocess; subprocess.run(['git','-C','/other/worktree','commit','-m','x'])"
+#
+# Nothing else in the guard sees that, because the payload is an opaque operand.
+# The owner judged the false positives more expensive than this hole.
+#
+# What the check was: when a program that is not a shell is handed text, the
+# analyzer cannot parse that text in the interpreter's own language, so it
+# tokenizes it and refuses if any token IS the word git. That is not a sloppy
+# substring test -- the predicate splits on non-word characters and matches
+# whole tokens -- but prose, comments and identifiers contain the bare word
+# constantly. A heredoc editing notes under ~/.claude was refused for the word
+# appearing in a sentence; the identical heredoc with the word changed passed.
+# Narrowing it soundly would mean parsing Python as Python, which a
+# length-neutral byte edit cannot do, so the only available change is removal.
+#
+# Scope is exactly this branch. The structural path is untouched: a direct
+# `git -C <other>` still refuses via the -C model, and `cd <other> ... git status`
+# still refuses via the chdir model, both naming the resolved directory. The
+# shell-payload path is untouched too -- text handed to sh/bash is still parsed
+# and analysed, so `sh -c "git -C /other commit"` is unaffected by this patch.
+#
+# Length neutrality uses the same discipline as drop-raw-substring-branch: the
+# three bytes of the short-circuit come out of the tail of this site's own
+# message literal, which the short-circuit makes unreachable. The donor is dead
+# code, never a live string. The derive captures the whole condition and the
+# message up to the trim point, so every minified identifier is replayed at
+# whatever width a future release gives it.
+[[patch.site]]
+anchor  = "non-shell interpreter payload check"
+find    = '''if(n.simple&&!OT.has(xe)&&w$e([OT.has(We.split(/\s/)[0]??"")?We:"",...w.filter(tO).map((St)=>St.text)].join(`
+`)))return`feeds ${xe} text naming git ${fm}, which cannot be shown to stay inside the worktree`;'''
+replace = '''if(0&&n.simple&&!OT.has(xe)&&w$e([OT.has(We.split(/\s/)[0]??"")?We:"",...w.filter(tO).map((St)=>St.text)].join(`
+`)))return`feeds ${xe} text naming git ${fm}, which cannot be shown to stay inside the workt`;'''
+
+[[patch.derive]]
+anchor   = "non-shell interpreter payload check"
+pattern  = 'if\((?P<cond>n\.simple&&![\w$]+\.has\([\w$]+\)&&[\w$]+\(\[[\s\S]{0,220}?\.join\(`\n`\)\))\)return(?P<msg>`feeds \$\{[\w$]+} text naming git \$\{[\w$]+}, which cannot be shown to stay inside the workt)ree`;'
+find     = 0
+replace  = 'if(0&&{{cond}})return{{msg}}`;'
+
+[patch.heal]
+prompt = """
+Claude Code refuses shell commands from a worktree-isolated agent session. Deep
+in the command analyser there is a branch that fires when a plain command runs a
+program that is NOT a shell and hands it text -- a heredoc, a -c argument, an
+assembled payload. Because the analyser cannot parse that text in the
+interpreter's own language, it tokenizes the text and refuses if any whole token
+is the word git. Its message reads
+
+  feeds <program> text naming git <where>, which cannot be shown to stay inside the worktree
+
+and its condition tests that the parse is simple, that the program is not in the
+shell set, and that a tokenizing predicate matches the joined payload text.
+
+Output one length-neutral edit that disables only this branch, by
+short-circuiting its condition with a falsy conjunct and paying for those bytes
+out of the tail of its own message literal, which the short-circuit makes
+unreachable. Do not touch the shell-payload analysis, the -C / --git-dir model,
+the chdir model, or any branch that reads the parse tree. Byte count in must
+equal byte count out.
+"""
