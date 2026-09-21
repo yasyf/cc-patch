@@ -4,6 +4,37 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING: worktreeguard no longer judges interpreter payloads.** A
+  non-shell program handed text -- a heredoc, a `-c` argument -- used to be
+  refused when any whole token in that text was the word `git`. The check is
+  removed rather than narrowed: it fires only for programs that are *not*
+  shells, so it is already the fallback for payloads the analyser cannot parse,
+  and narrowing it soundly would mean parsing Python as Python. This is a
+  deliberate loss of protection, taken with the cost accepted: an isolated
+  session can now reach another worktree's `git` through an interpreter payload,
+  such as a `python3 -c` one-liner calling `subprocess` with `-C` pointed
+  elsewhere. Text handed to `sh` or `bash` is still parsed and analysed, and the
+  structural `-C` and `cd` models are untouched.
+
+### Fixed
+
+- **worktreeguard refused compound commands for the word `git` in their text.**
+  The guard's non-simple branch tested a case-insensitive `git` regex against the
+  raw command string, so any loop, chain or heredoc whose text contained those
+  three letters was refused whatever it did -- `legitimate` in a comment, a regex
+  literal, a PR body quoting a command. One lane lost a finished delivery to it:
+  an agent with a committed branch could not open its PR, while the same two
+  operations run as plain commands passed. The branch sat in front of the
+  structural walk that models chdirs and redirects off the parse tree, so
+  short-circuiting it hands those commands to analysis that was already there
+  and is not textual. A cross-worktree write in a compound command is still
+  refused by that walk. The branch above it, which refuses when the parse
+  aborted and there is no tree to walk, is untouched.
+
 ## [0.19.0] - 2026-09-20
 
 ### Added
