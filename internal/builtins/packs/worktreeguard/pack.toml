@@ -71,3 +71,60 @@ exactly the three the shorter alternative gives up; byte count in must equal byt
 count out. Edit only this call site — the guard function's own body must keep
 refusing every command it is called on.
 """
+
+
+[[patch]]
+id      = "drop-raw-substring-branch"
+summary = "Stop refusing a compound command because its raw text merely contains the word git"
+segment = "__BUN"
+
+# The guard's non-simple branch tests `oxr`, which is `/git/i`, against the raw
+# command string. Any compound command whose text contains those three letters
+# anywhere is refused, whatever it does: `legitimate` in a comment, a `/git/`
+# regex literal being used to read this very binary, a PR body. The branch sits
+# in front of `yDt(e.tree)`, the structural walk that models chdirs and redirects
+# off the parse tree, so removing it does not remove analysis — it hands the
+# command to the analysis that was already there and is not textual.
+#
+# The `T$e(e)||e.tree===void 0` branch above it is untouched: a command whose
+# parse aborted still refuses, because there is no tree to walk. Only the
+# substring shortcut goes.
+#
+# Length neutrality comes from the three bytes `0&&` being paid for out of the
+# tail of the message literal, which the short-circuit makes unreachable. The
+# derive replays the captured identifiers, so a rename of `oxr`, `y` or `w` to
+# any width stays neutral by construction.
+[[patch.site]]
+anchor  = "non-simple raw-substring branch"
+find    = 'if(oxr.test(n))return y("names git in a form too complex to verify that it stays inside the worktree",w);'
+replace = 'if(0&&oxr.test(n))return y("names git in a form too complex to verify that it stays inside the workt",w);'
+
+[[patch.derive]]
+anchor   = "non-simple raw-substring branch"
+pattern  = 'if\((?P<re>\w+)\.test\((?P<cmd>\w+)\)\)return (?P<fn>\w+)\("names git in a form too complex to verify that it stays inside the worktree",(?P<alt>\w+)\);'
+find     = 0
+replace  = 'if(0&&{{re}}.test({{cmd}}))return {{fn}}("names git in a form too complex to verify that it stays inside the workt",{{alt}});'
+
+[patch.heal]
+prompt = """
+Claude Code refuses shell commands from a worktree-isolated agent session. The
+guard function takes the parsed command, the raw command string, the shell cwd
+and the isolation root, and returns a refusal string or null.
+
+Inside it, the branch handling a parse whose `kind` is not `"simple"` reads:
+
+  if(<parsed>.kind!=="simple"){
+    if(<aborted>(<parsed>)||<parsed>.tree===void 0)return <fail>("is too complex to verify that it stays inside the worktree",<split>);
+    if(<re>.test(<cmd>))return <fail>("names git in a form too complex to verify that it stays inside the worktree",<split>);
+    let <r>=<walk>(<parsed>.tree);return <r>===null?null:<fail>(<r>,<split>)
+  }
+
+`<re>` is a module-level regex equal to /git/i and `<cmd>` is the raw command
+string, so that middle line refuses on a bare substring match.
+
+Output one length-neutral edit that disables only that middle line, by
+short-circuiting its condition with `0&&` and paying for those three bytes out
+of the tail of its own message literal, which becomes unreachable. Do not touch
+the branch above it or the tree walk below it. Byte count in must equal byte
+count out.
+"""
