@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Pinned derive sites.** A `[[patch.derive]]` can set `pinned = true` to
   re-emit the pack's pinned site at the same position, without a pattern, for a
-  site an update cannot drift. A derive must now cover every site of its patch,
+  site an update cannot drift. Pack compilation now requires a derive per site,
   because recovery replaces the whole site list; a patch with no derive at all
   remains valid. noshadow is why: its pool entry ends before the interpolation a
   minifier renames, and a pattern's `replace` template cannot carry that entry's
@@ -28,6 +28,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Partial derives no longer leave sites unpatched.** Recovering a drifted
+  patch replaces its whole site list. Previously, recovery with a short `Derive`
+  result reported `patched (derived)` and `PersistSites` saved that list as
+  the Claude Code version's override, silently leaving omitted sites unpatched.
+  `patcher.deriveSites`, shared by `Apply` and `Status`, now rejects results that
+  do not cover every pinned site and names the uncovered anchors. Matching
+  accounts for the derive language's ` (derived)` suffix, so a site re-emitted
+  verbatim by `pinned = true` counts as covered. The guard runs at recovery time for
+  any `Derive` implementation, including patches registered in Go, alongside
+  the pack compilation rule requiring equal derive and site counts. It catches
+  the general form of noshadow's partial-recovery bug before any bytes are
+  written, leaving the binary and its backup untouched.
 - **noshadow left a stale hash in the constant pool.** Its raw byte edit blanked
   `! -x` without updating the entry's 24-bit `RapidHash`, so the characters and
   their precomputed hash disagreed even though the string length stayed valid.
