@@ -19,9 +19,9 @@ gate — the description text that forbids dynamic workflows unless the user typ
 "ultracode" or asked for one in their own words — so a standing CLAUDE.md opt-in
 governs, without ultracode's forced xhigh effort.
 
-A third, **worktreeguard**, narrows the guard that refuses shell commands in a
-worktree-isolated agent session, so it stops rejecting compound commands that
-never touch git.
+A third, **worktreeguard**, narrows the guard in a worktree-isolated session so
+incidental mentions of git stop causing refusals and `~/...` paths reach its
+existing repository checks.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/yasyf/cc-patch/ci.yml?branch=main&label=ci)](https://github.com/yasyf/cc-patch/actions/workflows/ci.yml)
 
@@ -185,18 +185,36 @@ decides when workflows run.
 
 ## How the worktreeguard patch works
 
-An agent session isolated in a worktree runs every bash command past a guard that
-must prove the command stays inside that worktree. The guard refuses anything the
-bash parser cannot reduce to a single simple command — every `&&` chain, loop, and
-subshell — and its call site asks only whether the shell is bash, never whether
-the command touches git. A `for` loop over `gh pr view` is therefore refused with
-"a worktree-isolated session's git operations must target its own worktree", a
-message about git, on a command containing none.
+Claude Code checks shell commands in a worktree-isolated session before running
+them. The command guard's call site tests only whether the shell is bash, so even
+a loop over `gh pr view` can draw a refusal about git. The
+`git-only-command-guard` patch tests the raw command string for `git` instead,
+paying for the extra bytes by shortening `:null` to `:0`. Commands that match
+still enter the guard; the cwd-escape guard immediately before it still runs.
 
-The pack rewrites that call site's condition to test the raw command string for
-`git`, spending the extra bytes on a shorter `:null` alternative to stay
-length-neutral. Commands that name git still take the whole check, and the
-cwd-escape guard that runs just before it is untouched.
+Inside the command guard, `drop-raw-substring-branch` disables the branch that
+refuses a compound command because its text contains `git`. A loop, chain or
+heredoc then reaches the existing structural walk, which models directory changes
+and redirects from the parse tree. An aborted parse with no tree to walk still
+refuses.
+
+The `drop-interpreter-payload-check` patch removes the check for a whole `git`
+token in text handed to a non-shell interpreter. Prose and comments in a Python
+heredoc no longer trigger it. This also permits an interpreter payload to invoke
+git against another worktree; the guard cannot parse that payload. Text handed to
+`sh` or `bash` still goes through shell analysis.
+
+The `expand-leading-tilde` patch expands a leading `~/` using `process.env.HOME`
+in the resolver shared by `cd`, `env -C`, git directory arguments and assignment
+values. The resolver otherwise treats every tilde as opaque and refuses `~/...`
+as a path computed at runtime. For unquoted `~/...` operands, expansion lets the
+existing repository checks judge the resolved directory: an unrelated repository
+is allowed, while the shared checkout still refuses, now by its own name. Quoted
+`~/...` operands can bypass that refusal if a directory or symlink literally
+named `~` in the session's cwd leads to the shared checkout: the guard checks
+`$HOME/...`, while the command reaches `<cwd>/~/...`. Only `~/` expands. `~user`
+and a bare `~` stay opaque, and an unset HOME leaves the tilde in place so the
+path still refuses. The edit fits in the resolver's original 197 bytes.
 
 ## Commands
 
