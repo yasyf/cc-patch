@@ -202,3 +202,112 @@ unreachable. Do not touch the shell-payload analysis, the -C / --git-dir model,
 the chdir model, or any branch that reads the parse tree. Byte count in must
 equal byte count out.
 """
+
+
+[[patch]]
+id      = "expand-leading-tilde"
+summary = "Expand a leading ~/ to the home directory instead of calling the path computed at runtime"
+segment = "__BUN"
+
+# Every directory the guard models -- a `cd` operand, an `env -C` value, a `-C`
+# or `--git-dir` argument, an assignment's value -- goes through one resolver.
+# It refuses a word it cannot pin to a directory before the command runs, and
+# `~/x` is on that list: the opacity predicate it calls ends with
+# `if(e.includes("~"))return!0`. So `cd ~/Code/other-repo && ... git log` dies
+# with "changes directory to a location computed at runtime", and
+# `git -C ~/.claude/worktrees/repo/lane branch --show-current` with "points git
+# at a directory computed at runtime", while the same two commands with the home
+# directory spelled out run. `~/x` is not computed at runtime: bash expands it to
+# `$HOME/x` and nothing else.
+#
+# The resolver expands a leading `~/` itself, before the opacity predicate sees
+# the word, and the rest of the guard is then handed the real path. The repo
+# scoping the guard already does is what decides the verdict from there: the
+# escape test resolves the session's roots and refuses only a directory that
+# belongs to them without being inside this worktree, so an unrelated repository
+# is allowed and the shared checkout is still refused -- now by its own name
+# rather than as an unverifiable path.
+#
+# Only `~/` expands. `~user` is another user's home, which the resolver cannot
+# know, and a bare `~` with no slash stays opaque too; both keep refusing. With
+# HOME unset the word keeps its tilde and the opacity predicate refuses it,
+# rather than resolving against the string "undefined".
+#
+# WHAT THIS PERMITS, stated plainly. Bash expands a tilde only unquoted, and the
+# resolver is handed the decoded word with the quoting already gone, so this edit
+# expands `'~/x'` and `"~/x"` too, where bash sends the literal three-character
+# `~/x` instead. Those words used to refuse and now resolve, so the guard judges
+# `$HOME/x` while the command reaches `<cwd>/~/x`. Reaching another checkout that
+# way needs a directory or symlink literally named `~` inside the session's cwd
+# pointing at one; absent that the real target stays inside the worktree, which
+# the guard allows anyway. Fixing it properly means expanding where the parser
+# still knows the word was unquoted, which this site cannot see and a
+# length-neutral byte edit cannot reach. The owner took the narrower false
+# refusals over that exposure.
+#
+# Length neutrality pays for the expansion out of the function's own shape: two
+# `return null` guards fold into the disjunction they duplicate, the two
+# `includes` calls become one regex, and the resolved path reuses the `n`
+# parameter instead of a fresh local. Byte count in equals byte count out with
+# nothing to spare. Every predicate call survives, on the same operand, with one
+# reordering the fold forces: the absolute-path test now runs before the glob
+# test rather than after it. Both are pure, so the returned value is unchanged.
+[[patch.site]]
+anchor  = "guard path resolver"
+find    = 'function r5(e,n,r,s){if(Di(e)||e.includes("{}")||e.includes("\x00")||jDt(e)||WDt(e)||nl(e)||s&&lk(e)!==-1)return null;if(r&&!WTr(e))return null;let g=Ze(e,n);if(jDt(g)||WDt(g))return null;return g}'
+replace = 'function r5(e,n,r,s){return /^~\//.test(e)&&(e=(process.env.HOME??"~")+e.slice(1)),Di(e)||/\{\}|\0/.test(e)||jDt(e)||WDt(e)||nl(e)||r&&!WTr(e)||s&&lk(e)!==-1?null:(n=Ze(e,n),jDt(n)||WDt(n)?null:n)}'
+
+# Every identifier here is minified, so the derive captures each one and replays
+# it. RE2 has no backreferences, so each repeated operand reads as a bare `\w+`
+# rather than a backreference to the parameter; the shape around it -- five
+# predicates in one disjunction, the absolute-path guard, the resolve, the
+# post-resolve pair -- is specific enough that no other function in the bundle
+# matches it, and it matches exactly once in 2.1.278.
+#
+# That pattern pins the shape, not which operand each predicate reads. A future
+# bundle that kept this exact shape while changing an operand -- testing the glob
+# flag where the absolute-path flag is tested, returning the unresolved word --
+# would still match, and the template would render this patch's semantics over
+# it. RE2 cannot express the equality that would catch it. What does catch it is
+# the pinned site: a semantic change ships new bytes, `find` stops matching, and
+# `heal` escalates with the prompt below instead of the derive deciding alone.
+#
+# Neutrality depends on the widths this site's identifiers have: the rewrite
+# spells the first parameter twelve times where the original spells it ten and
+# the second six times where the original spells it twice, while the original's
+# local disappears. A rename that changes any of those widths breaks length
+# neutrality, which the derive reports rather than emitting a resizing edit.
+[[patch.derive]]
+anchor   = "guard path resolver"
+pattern  = 'function (?P<fn>\w+)\((?P<e>\w+),(?P<n>\w+),(?P<r>\w+),(?P<s>\w+)\)\{if\((?P<di>\w+)\(\w+\)\|\|\w+\.includes\("\{\}"\)\|\|\w+\.includes\("\\x00"\)\|\|(?P<jdt>\w+)\(\w+\)\|\|(?P<wdt>\w+)\(\w+\)\|\|(?P<nl>\w+)\(\w+\)\|\|\w+&&(?P<lk>\w+)\(\w+\)!==-1\)return null;if\(\w+&&!(?P<abs>\w+)\(\w+\)\)return null;let \w+=(?P<res>\w+)\(\w+,\w+\);if\(\w+\(\w+\)\|\|\w+\(\w+\)\)return null;return \w+\}'
+find     = 0
+replace  = 'function {{fn}}({{e}},{{n}},{{r}},{{s}}){return /^~\//.test({{e}})&&({{e}}=(process.env.HOME??"~")+{{e}}.slice(1)),{{di}}({{e}})||/\{\}|\0/.test({{e}})||{{jdt}}({{e}})||{{wdt}}({{e}})||{{nl}}({{e}})||{{r}}&&!{{abs}}({{e}})||{{s}}&&{{lk}}({{e}})!==-1?null:({{n}}={{res}}({{e}},{{n}}),{{jdt}}({{n}})||{{wdt}}({{n}})?null:{{n}})}'
+
+[patch.heal]
+prompt = """
+Claude Code refuses shell commands from a worktree-isolated agent session. Every
+directory the guard models runs through one resolver, which returns the resolved
+directory or null when the word cannot be pinned before the command runs. It
+reads
+
+  function <fn>(<word>,<cwd>,<mustBeAbsolute>,<hasGlob>){
+    if(<computed>(<word>)||<word>.includes("{}")||<word>.includes("\\x00")||<device>(<word>)||<opaque>(<word>)||<other>(<word>)||<hasGlob>&&<glob>(<word>)!==-1)return null;
+    if(<mustBeAbsolute>&&!<isAbsolute>(<word>))return null;
+    let <resolved>=<resolve>(<word>,<cwd>);
+    if(<device>(<resolved>)||<opaque>(<resolved>))return null;
+    return <resolved>
+  }
+
+`<opaque>` is the predicate whose last test is `if(<word>.includes("~"))return!0`,
+which is why `~/x` resolves to null and the guard reports a location computed at
+runtime.
+
+Output one length-neutral edit to that resolver so a word matching /^~\\// has its
+tilde replaced by process.env.HOME before any predicate sees it, falling back to
+leaving the tilde in place when HOME is unset. Keep every predicate call, in the
+same order, on the same word, and keep the post-resolve pair. Fund the added bytes
+inside this function: fold the second `return null` guard into the first
+disjunction, fold the two `includes` calls into one regex, and reuse a parameter
+for the resolved path instead of declaring a local. Do not expand `~user` or a
+bare `~`. Byte count in must equal byte count out. Edit no other function.
+"""

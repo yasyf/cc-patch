@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **worktreeguard refused `~/...` paths as directories computed at runtime.**
+  Every directory the guard models passes through one resolver, whose opacity
+  test rejects any word containing a tilde. A live session could not run a
+  `cd ~/Code/captain-hook` chain ending in git, even though captain-hook is an
+  unrelated repository; `git -C ~/.claude/worktrees/monorepo-old/tool-bk-status`
+  also refused while the absolute spelling passed. The new
+  `expand-leading-tilde` patch expands a leading `~/` using `process.env.HOME`
+  before the resolver's predicates run. For unquoted `~/...` operands, the
+  existing repository checks then decide whether the resolved directory is
+  allowed -- an unrelated repository already qualified, and the shared checkout
+  still refuses by its own name. `~user` and a bare `~` stay opaque. With HOME
+  unset, the word keeps its tilde and still refuses. Quoted `~/...` operands
+  also expand because the resolver receives words with quoting information
+  removed -- the guard checks `$HOME/...`, while the command reaches
+  `<cwd>/~/...`. That mismatch can bypass the shared-checkout refusal if a
+  directory or symlink literally named `~` in the session's cwd leads there.
+  The edit uses exactly the resolver's original 197 bytes and retains every
+  predicate.
+
 ## [0.20.0] - 2026-09-21
 
 ### Changed
