@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`status` reports running Claude Code processes that need a restart.** After
+  0.20.0 applied three patches, `status` reported every patch as `patched`
+  while a session started two hours 49 minutes earlier kept hitting the
+  refusals those patches remove. Applying a patch replaces the binary file by
+  rename; running processes keep the old file mapped. `status` now compares
+  each process's mapped executable, by device and inode, with the binary on
+  disk, prints its pid, start time and `current` or `stale` verdict, and tells
+  you when to restart Claude Code. A live check finds 17 of 22 processes stale.
+  Processes whose executable cannot be identified are counted explicitly, so a
+  partial list does not appear complete.
+
 ## [0.20.2] - 2026-09-21
 
 ### Fixed
