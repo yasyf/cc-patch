@@ -72,6 +72,34 @@ Fast mode bills at the priority tier, so this raises spend for Opus subagents,
 teammates, and workflow agents. That is the intended effect, bounded to your Opus
 delegated work.
 
+## Check running sessions
+
+A patch edits the binary file on disk. It reaches only processes that exec that
+file after the edit. `apply` publishes the patched binary by rename, and an
+already-running process keeps the old file mapped. A child forked from that
+process inherits the old mapping too, even if it starts after the patch.
+
+Run `cc-patch status` to check running sessions. After the per-patch lines, it
+prints the binary's last-write time and the processes owned by your user that
+exec through the installed Claude Code launcher. Each row shows a pid, start
+time, and verdict. `current` means the process maps the binary now on disk;
+`stale` means it maps a different file. File identity decides the verdict;
+start times are context. For example:
+
+```text
+binary last written 2026-09-20 22:06:04; 22 claude processes running
+  pid 30528  started 2026-09-21 19:40:43  current
+  pid 69074  started 2026-09-20 19:17:20  stale
+  ...
+5 running processes would not name their executable, so a claude process may be missing above
+17 of 22 running processes do not map this binary, so they do not have the patches above — restart Claude Code
+```
+
+Restart stale Claude Code sessions to load the patched binary. If a process
+does not name its executable, `status` reports the count and warns that the list
+may be incomplete. If it identifies a Claude Code process but cannot inspect
+its mapping while it remains alive, the command fails and names the pid.
+
 ## Stay patched across updates
 
 Claude Code auto-updates by dropping a new versioned binary and repointing the
@@ -224,7 +252,7 @@ path still refuses. The edit fits in the resolver's original 197 bytes.
 | `uninstall <owner>/<repo> \| <builtin>` | Remove an installed pack and its state. |
 | `update [<owner>/<repo>]` | Re-clone a remote pack, or all remotes. |
 | `list` | List installed patches and available builtins. |
-| `status` | Report whether each patch is applied. Read-only. |
+| `status` | Report applied patches and whether running Claude Code processes map the current binary. Read-only. |
 | `apply --all` | Patch the installed binary and re-sign it. Carries on past a patch that fails and exits non-zero. |
 | `restore` | Restore the pristine, vendor-signed binary from backup. |
 | `heal --all` | Re-apply, re-deriving through Claude when an update drifts a patch. Carries on past a patch that fails and exits non-zero. |
