@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **The cask no longer installs a binary macOS refuses to launch.** Homebrew
+  marks every cask download `com.apple.quarantine`, and a quarantined binary's
+  first exec blocks on a synchronous syspolicyd assessment. Where syspolicyd is
+  wedged that assessment never returns, so `cc-patch --version` hung forever on
+  a freshly installed 0.20.1 while the superseded 0.20.0 payload beside it
+  answered in milliseconds. `spctl -a -vvv -t install` reported `accepted`
+  throughout, because it grades the assessment rather than the exec. The
+  postflight now strips the attribute, and strips it *before* the
+  `install-daemons` call: that call is the binary's first exec, so an install
+  that cleared quarantine afterwards would still have hung, and hung inside
+  `brew install` rather than at a prompt. The strip tolerates a missing
+  attribute, which `xattr -d` reports by exiting 1.
+
+  The launchd copy at `~/.daemonkit/bin/cc-patch` needs no strip of its own:
+  `placeProgram` reads the source's bytes and writes a new file, and an
+  extended attribute belongs to the file rather than to its contents, so it
+  cannot ride along. Verified against a deliberately quarantined source, with
+  `cp -p` as the positive control that does carry it.
+
 ## [0.20.1] - 2026-09-21
 
 ### Fixed
