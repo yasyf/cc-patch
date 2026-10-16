@@ -4,7 +4,9 @@ package macho
 
 import (
 	"debug/macho"
+	"errors"
 	"fmt"
+	"io"
 )
 
 // Segment is one Mach-O segment's byte range within the file.
@@ -14,25 +16,22 @@ type Segment struct {
 	Size   int64
 }
 
-// FindSegment returns the file range of the named segment. Thin images resolve
-// directly; universal images use their arm64 slice, offsetting by its position
-// in the fat container.
-func FindSegment(path, name string) (Segment, error) {
-	if f, err := macho.Open(path); err == nil {
-		defer func() { _ = f.Close() }()
+// FindSegment returns the named segment's file range within the bytes r holds:
+// thin images directly, universal images through their arm64 slice.
+func FindSegment(r io.ReaderAt, name string) (Segment, error) {
+	if f, err := macho.NewFile(r); err == nil {
 		return findIn(f, 0, name)
 	}
-	fat, err := macho.OpenFat(path)
+	fat, err := macho.NewFatFile(r)
 	if err != nil {
-		return Segment{}, fmt.Errorf("open mach-o %q: %w", path, err)
+		return Segment{}, fmt.Errorf("parse mach-o: %w", err)
 	}
-	defer func() { _ = fat.Close() }()
 	for _, arch := range fat.Arches {
 		if arch.Cpu == macho.CpuArm64 {
 			return findIn(arch.File, int64(arch.Offset), name)
 		}
 	}
-	return Segment{}, fmt.Errorf("mach-o %q: no arm64 slice", path)
+	return Segment{}, errors.New("mach-o: no arm64 slice")
 }
 
 func findIn(f *macho.File, base int64, name string) (Segment, error) {

@@ -263,6 +263,9 @@ path still refuses. The edit fits in the resolver's original 197 bytes.
 (e.g. `fastmode/delegated-agents`, `workflowdefault/workflow-optin`, or
 `<owner>/<repo>/<patch>`).
 
-Status: works on macOS (arm64). The engine is release-agnostic; a pack's pinned
+Status: works on macOS (arm64), with Claude Code's versions directory on Apple File
+System (APFS). cc-patch clones the binary to patch it, so on a file system
+without clones the apply fails with `operation not supported`. The engine is
+release-agnostic; a pack's pinned
 sites are version-proven, and a release that reshapes the code triggers the pack's
 `derive` and then `heal`.
