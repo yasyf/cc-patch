@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Applying a patch no longer writes a full copy of the binary first.** Each
+  changed patch used to write the whole binary to a temp file before signing it.
+  On Claude Code 2.1.301 that is 250.5 MB per patch, and the seven patches one
+  daily heal applied cost 1.75 GB from cc-patch alone. Apply now clones the file
+  it read, writes only the changed sites into the clone, then signs, verifies,
+  and renames it as before. Each patch still installs on its own, so an earlier
+  patch stays installed when a later one fails. `codesign` still writes a new
+  file each time it runs.
+- **Claude Code's versions directory must be on Apple File System (APFS).** The
+  clone comes from the open file Apply evaluated, so an update that swaps the
+  binary mid-apply is never cloned in its place. On a file system without clones
+  the apply fails with `operation not supported`. The installed binary keeps the
+  evaluated file's extended attributes and is still set to mode 755.
+
 ## [0.20.3] - 2026-09-22
 
 ### Added

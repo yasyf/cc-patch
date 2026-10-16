@@ -18,6 +18,7 @@ const (
 	fixtureMarker       = "ccpatch_test_marker_7f3a9c1e"
 	fixtureSecondMarker = "ccpatch_second_mark_4e2b8d6f"
 	lcCodeSignature     = 0x1d
+	machHeader64Size    = 32
 )
 
 func requireCodesignAndGo(t *testing.T) {
@@ -187,6 +188,147 @@ func TestApplySigningFailureLeavesLiveBinaryUntouched(t *testing.T) {
 			t.Errorf("temp file left behind: %s", e.Name())
 		}
 	}
+}
+
+func TestApplyChangesOnlyItsSites(t *testing.T) {
+	requireCodesignAndGo(t)
+	ctx := context.Background()
+	bin := buildFixture(t)
+	before, err := Window(bin, "__TEXT")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subs := []Substitution{{Find: []byte(fixtureMarker), Replace: blanked(fixtureMarker)}}
+	res, err := Apply(ctx, bin, bin+".ccpatch-orig", "__TEXT", subs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Changed {
+		t.Error("Changed = false, want true")
+	}
+
+	after, err := Window(bin, "__TEXT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := bytes.Clone(before)
+	idx := mustUniqueIndex(t, want, fixtureMarker)
+	copy(want[idx:], blanked(fixtureMarker))
+	commands := loadCommandsEnd(t, bin)
+	if !bytes.Equal(after[commands:], want[commands:]) {
+		t.Error("__TEXT past the load commands differs from the original with only the site blanked")
+	}
+	if err := VerifySignature(ctx, bin); err != nil {
+		t.Errorf("patched binary fails verification: %v", err)
+	}
+	if err := exec.Command(bin).Run(); err != nil {
+		t.Errorf("patched binary no longer executes: %v", err)
+	}
+	info, err := os.Stat(bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o755 {
+		t.Errorf("patched binary mode = %o, want 755", got)
+	}
+	entries, err := os.ReadDir(filepath.Dir(bin))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".ccpatch-") {
+			t.Errorf("temp clone left behind: %s", e.Name())
+		}
+	}
+}
+
+func TestApplyPatchesAReadOnlyBinary(t *testing.T) {
+	requireCodesignAndGo(t)
+	ctx := context.Background()
+	bin := buildFixture(t)
+	if err := os.Chmod(bin, 0o555); err != nil {
+		t.Fatal(err)
+	}
+
+	subs := []Substitution{{Find: []byte(fixtureMarker), Replace: blanked(fixtureMarker)}}
+	if _, err := Apply(ctx, bin, bin+".ccpatch-orig", "__TEXT", subs); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := os.Stat(bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o755 {
+		t.Errorf("patched binary mode = %o, want 755", got)
+	}
+	got, err := os.ReadFile(bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(got, []byte(fixtureMarker)) {
+		t.Error("marker still present in the patched read-only binary")
+	}
+	if err := exec.Command(bin).Run(); err != nil {
+		t.Errorf("patched binary no longer executes: %v", err)
+	}
+}
+
+func TestInstallClonesTheFileItWasHandedNotThePath(t *testing.T) {
+	requireCodesignAndGo(t)
+	ctx := context.Background()
+	bin := buildFixture(t)
+	data, err := os.ReadFile(bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := os.Open(bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = src.Close() }()
+
+	decoy := bin + ".decoy"
+	if err := os.WriteFile(decoy, []byte("not the evaluated binary"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(decoy, bin); err != nil {
+		t.Fatal(err)
+	}
+
+	seg, err := findSegment(bin, data, "__TEXT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rs, err := evaluate(data, seg, []Substitution{{Find: []byte(fixtureMarker), Replace: blanked(fixtureMarker)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := install(ctx, src, bin, rs); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := os.ReadFile(bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(got, []byte(fixtureMarker)) || !bytes.Contains(got, blanked(fixtureMarker)) {
+		t.Error("installed binary is not the handed file with its site blanked")
+	}
+	if err := exec.Command(bin).Run(); err != nil {
+		t.Errorf("installed binary no longer executes: %v", err)
+	}
+}
+
+func loadCommandsEnd(t *testing.T, path string) int {
+	t.Helper()
+	f, err := debugmacho.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	return machHeader64Size + int(f.Cmdsz)
 }
 
 func TestApplyRepairsPatchedBinaryWithInvalidSignature(t *testing.T) {

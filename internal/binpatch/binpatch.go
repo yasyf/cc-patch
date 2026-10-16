@@ -5,12 +5,16 @@ package binpatch
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/yasyf/cc-patch/internal/macho"
 )
@@ -117,13 +121,13 @@ func statuses(rs []resolved) []SiteStatus {
 
 // Window returns a copy of the named segment's bytes, for structural derivation.
 func Window(binary, segName string) ([]byte, error) {
-	seg, err := macho.FindSegment(binary, segName)
-	if err != nil {
-		return nil, err
-	}
 	data, err := os.ReadFile(binary)
 	if err != nil {
 		return nil, fmt.Errorf("read binary %q: %w", binary, err)
+	}
+	seg, err := findSegment(binary, data, segName)
+	if err != nil {
+		return nil, err
 	}
 	if seg.Offset < 0 || seg.Offset+seg.Size > int64(len(data)) {
 		return nil, fmt.Errorf("segment %s [%d,%d) outside file of %d bytes", seg.Name, seg.Offset, seg.Offset+seg.Size, len(data))
@@ -133,13 +137,13 @@ func Window(binary, segName string) ([]byte, error) {
 
 // Status resolves every substitution against the binary without modifying it.
 func Status(binary, segName string, subs []Substitution) (Result, error) {
-	seg, err := macho.FindSegment(binary, segName)
-	if err != nil {
-		return Result{}, err
-	}
 	data, err := os.ReadFile(binary)
 	if err != nil {
 		return Result{}, fmt.Errorf("read binary %q: %w", binary, err)
+	}
+	seg, err := findSegment(binary, data, segName)
+	if err != nil {
+		return Result{}, err
 	}
 	rs, err := evaluate(data, seg, subs)
 	if err != nil {
@@ -148,19 +152,24 @@ func Status(binary, segName string, subs []Substitution) (Result, error) {
 	return Result{Sites: statuses(rs)}, nil
 }
 
-// Apply patches every unpatched site, then signs and verifies a temp copy
-// before renaming it over the binary, so a signing failure leaves the live
-// binary untouched. It backs the pristine original up to backup before the
-// first write, re-signs a patched binary whose signature is invalid, and
-// returns ErrDrift when any site is missing.
+// Apply writes every unpatched site into a clone of the binary it read, then
+// signs, verifies, and renames the clone over it, so a signing failure leaves
+// the live binary untouched. It backs up the pristine original before the first
+// write, re-signs a patched binary with an invalid signature, and returns
+// ErrDrift when any site is missing.
 func Apply(ctx context.Context, binary, backup, segName string, subs []Substitution) (Result, error) {
-	seg, err := macho.FindSegment(binary, segName)
+	src, err := os.Open(binary)
 	if err != nil {
-		return Result{}, err
+		return Result{}, fmt.Errorf("open binary %q: %w", binary, err)
 	}
-	data, err := os.ReadFile(binary)
+	defer func() { _ = src.Close() }()
+	data, err := io.ReadAll(src)
 	if err != nil {
 		return Result{}, fmt.Errorf("read binary %q: %w", binary, err)
+	}
+	seg, err := findSegment(binary, data, segName)
+	if err != nil {
+		return Result{}, err
 	}
 	rs, err := evaluate(data, seg, subs)
 	if err != nil {
@@ -183,7 +192,7 @@ func Apply(ctx context.Context, binary, backup, segName string, subs []Substitut
 		if err := VerifySignature(ctx, binary); err == nil {
 			return Result{Changed: false, Sites: statuses(rs)}, nil
 		}
-		if err := install(ctx, binary, data); err != nil {
+		if err := install(ctx, src, binary, nil); err != nil {
 			return Result{}, err
 		}
 		return Result{Changed: true, Sites: statuses(rs)}, nil
@@ -191,13 +200,18 @@ func Apply(ctx context.Context, binary, backup, segName string, subs []Substitut
 	if err := ensureBackup(binary, backup); err != nil {
 		return Result{}, err
 	}
-	for _, r := range pending {
-		copy(data[r.offset:r.offset+int64(len(r.sub.Replace))], r.sub.Replace)
-	}
-	if err := install(ctx, binary, data); err != nil {
+	if err := install(ctx, src, binary, pending); err != nil {
 		return Result{}, err
 	}
 	return Result{Changed: true, Sites: statuses(rs)}, nil
+}
+
+func findSegment(binary string, data []byte, segName string) (macho.Segment, error) {
+	seg, err := macho.FindSegment(bytes.NewReader(data), segName)
+	if err != nil {
+		return macho.Segment{}, fmt.Errorf("%s: %w", binary, err)
+	}
+	return seg, nil
 }
 
 // Restore rewrites the binary from its pristine backup and removes the backup.
@@ -273,12 +287,15 @@ func writeAtomic(path string, data []byte, perm os.FileMode) error {
 	return nil
 }
 
-func install(ctx context.Context, binary string, data []byte) error {
-	tmp, err := writeTemp(binary, data, 0o755)
-	if err != nil {
-		return err
+func install(ctx context.Context, src *os.File, binary string, pending []resolved) error {
+	tmp := filepath.Join(filepath.Dir(binary), ".ccpatch-"+rand.Text())
+	if err := unix.Fclonefileat(int(src.Fd()), unix.AT_FDCWD, tmp, 0); err != nil {
+		return fmt.Errorf("clone %q to %q: %w", binary, tmp, err)
 	}
 	defer func() { _ = os.Remove(tmp) }()
+	if err := writeSites(tmp, pending, 0o755); err != nil {
+		return err
+	}
 	if err := resign(ctx, tmp); err != nil {
 		return err
 	}
@@ -287,6 +304,26 @@ func install(ctx context.Context, binary string, data []byte) error {
 	}
 	if err := os.Rename(tmp, binary); err != nil {
 		return fmt.Errorf("rename over %q: %w", binary, err)
+	}
+	return nil
+}
+
+func writeSites(clone string, pending []resolved, perm os.FileMode) error {
+	if err := os.Chmod(clone, perm); err != nil {
+		return fmt.Errorf("chmod clone %q: %w", clone, err)
+	}
+	f, err := os.OpenFile(clone, os.O_WRONLY, 0)
+	if err != nil {
+		return fmt.Errorf("open clone %q: %w", clone, err)
+	}
+	for _, r := range pending {
+		if _, err := f.WriteAt(r.sub.Replace, r.offset); err != nil {
+			_ = f.Close()
+			return fmt.Errorf("write site at offset %d of %q: %w", r.offset, clone, err)
+		}
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close clone %q: %w", clone, err)
 	}
 	return nil
 }
