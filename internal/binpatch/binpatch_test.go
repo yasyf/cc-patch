@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/yasyf/cc-patch/internal/macho"
 )
 
@@ -272,6 +274,41 @@ func TestApplyPatchesAReadOnlyBinary(t *testing.T) {
 	}
 	if err := exec.Command(bin).Run(); err != nil {
 		t.Errorf("patched binary no longer executes: %v", err)
+	}
+}
+
+func TestApplyToAnImmutableBinaryLeavesNoClone(t *testing.T) {
+	requireCodesignAndGo(t)
+	bin := buildFixture(t)
+	before, err := os.ReadFile(bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := unix.Chflags(bin, unix.UF_IMMUTABLE); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = unix.Chflags(bin, 0) })
+
+	subs := []Substitution{{Find: []byte(fixtureMarker), Replace: blanked(fixtureMarker)}}
+	if _, err := Apply(context.Background(), bin, bin+".ccpatch-orig", "__TEXT", subs); err == nil {
+		t.Fatal("expected Apply to fail renaming over an immutable binary")
+	}
+
+	after, err := os.ReadFile(bin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Error("immutable binary changed")
+	}
+	entries, err := os.ReadDir(filepath.Dir(bin))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".ccpatch-") {
+			t.Errorf("clone left behind: %s", e.Name())
+		}
 	}
 }
 

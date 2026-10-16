@@ -293,6 +293,9 @@ func install(ctx context.Context, src *os.File, binary string, pending []resolve
 		return fmt.Errorf("clone %q to %q: %w", binary, tmp, err)
 	}
 	defer func() { _ = os.Remove(tmp) }()
+	if err := clearWriteLocks(tmp); err != nil {
+		return err
+	}
 	if err := writeSites(tmp, pending, 0o755); err != nil {
 		return err
 	}
@@ -304,6 +307,21 @@ func install(ctx context.Context, src *os.File, binary string, pending []resolve
 	}
 	if err := os.Rename(tmp, binary); err != nil {
 		return fmt.Errorf("rename over %q: %w", binary, err)
+	}
+	return nil
+}
+
+func clearWriteLocks(clone string) error {
+	var st unix.Stat_t
+	if err := unix.Stat(clone, &st); err != nil {
+		return fmt.Errorf("stat clone %q: %w", clone, err)
+	}
+	const locks = unix.UF_IMMUTABLE | unix.UF_APPEND
+	if st.Flags&locks == 0 {
+		return nil
+	}
+	if err := unix.Chflags(clone, int(st.Flags&^locks)); err != nil {
+		return fmt.Errorf("clear immutable flags on clone %q: %w", clone, err)
 	}
 	return nil
 }
