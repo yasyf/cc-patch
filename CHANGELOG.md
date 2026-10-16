@@ -4,7 +4,7 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.21.0] - 2026-10-16
 
 ### Changed
 
@@ -20,7 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   clone comes from the open file Apply evaluated, so an update that swaps the
   binary mid-apply is never cloned in its place. On a file system without clones
   the apply fails with `operation not supported`. The installed binary keeps the
-  evaluated file's extended attributes and is still set to mode 755.
+  evaluated file's extended attributes and is still set to mode 755. An
+  immutable or append-only binary is refused, naming its flags, before anything
+  is cloned.
 
 ## [0.20.3] - 2026-09-22
 
