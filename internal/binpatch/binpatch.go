@@ -288,14 +288,18 @@ func writeAtomic(path string, data []byte, perm os.FileMode) error {
 }
 
 func install(ctx context.Context, src *os.File, binary string, pending []resolved) error {
+	var st unix.Stat_t
+	if err := unix.Fstat(int(src.Fd()), &st); err != nil {
+		return fmt.Errorf("stat %q: %w", binary, err)
+	}
+	if st.Flags&(unix.UF_IMMUTABLE|unix.UF_APPEND|unix.SF_IMMUTABLE|unix.SF_APPEND) != 0 {
+		return fmt.Errorf("%q is immutable or append-only (flags %#x); clear its flags to patch it", binary, st.Flags)
+	}
 	tmp := filepath.Join(filepath.Dir(binary), ".ccpatch-"+rand.Text())
 	if err := unix.Fclonefileat(int(src.Fd()), unix.AT_FDCWD, tmp, 0); err != nil {
 		return fmt.Errorf("clone %q to %q: %w", binary, tmp, err)
 	}
 	defer func() { _ = os.Remove(tmp) }()
-	if err := clearWriteLocks(tmp); err != nil {
-		return err
-	}
 	if err := writeSites(tmp, pending, 0o755); err != nil {
 		return err
 	}
@@ -307,21 +311,6 @@ func install(ctx context.Context, src *os.File, binary string, pending []resolve
 	}
 	if err := os.Rename(tmp, binary); err != nil {
 		return fmt.Errorf("rename over %q: %w", binary, err)
-	}
-	return nil
-}
-
-func clearWriteLocks(clone string) error {
-	var st unix.Stat_t
-	if err := unix.Stat(clone, &st); err != nil {
-		return fmt.Errorf("stat clone %q: %w", clone, err)
-	}
-	const locks = unix.UF_IMMUTABLE | unix.UF_APPEND
-	if st.Flags&locks == 0 {
-		return nil
-	}
-	if err := unix.Chflags(clone, int(st.Flags&^locks)); err != nil {
-		return fmt.Errorf("clear immutable flags on clone %q: %w", clone, err)
 	}
 	return nil
 }

@@ -290,8 +290,9 @@ func TestApplyToAnImmutableBinaryLeavesNoClone(t *testing.T) {
 	t.Cleanup(func() { _ = unix.Chflags(bin, 0) })
 
 	subs := []Substitution{{Find: []byte(fixtureMarker), Replace: blanked(fixtureMarker)}}
-	if _, err := Apply(context.Background(), bin, bin+".ccpatch-orig", "__TEXT", subs); err == nil {
-		t.Fatal("expected Apply to fail renaming over an immutable binary")
+	_, err = Apply(context.Background(), bin, bin+".ccpatch-orig", "__TEXT", subs)
+	if err == nil || !strings.Contains(err.Error(), "immutable or append-only") {
+		t.Fatalf("Apply error = %v, want an immutable-binary refusal", err)
 	}
 
 	after, err := os.ReadFile(bin)
