@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- The Homebrew cask strips quarantine and reruns `install-daemons` from a `postflight_steps` stanza instead of the Ruby `postflight` block Homebrew 7 deprecated, so `brew upgrade` no longer warns. Install steps run in Homebrew's sandbox, so the step passes the real `HOME` and allows writes to `~/.daemonkit`, `~/Library/LaunchAgents`, and `~/Library/Logs/cc-patch`.
+
 ## [0.21.0] - 2026-10-16
 
 ### Changed

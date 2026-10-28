@@ -72,19 +72,22 @@ homebrew_casks:
     description: Fast mode for Claude Code's delegated agents, re-applied automatically on every update.
     hooks:
       post:
-        install: |
-          if OS.mac?
+        install_steps: |
+          on_macos do
             # Strip quarantine BEFORE the first exec below, never after: Homebrew marks
             # every cask download com.apple.quarantine, and a quarantined binary's first
             # exec blocks on a syspolicyd assessment that never returns where syspolicyd
             # is wedged — which would hang this postflight, and so `brew install` itself.
             # must_succeed: false because xattr -d exits 1 when the attribute is absent.
-            system_command "/usr/bin/xattr",
-                           args: ["-d", "com.apple.quarantine", "#{staged_path}/cc-patch"],
-                           must_succeed: false
+            run "/usr/bin/xattr", args: ["-d", "com.apple.quarantine", "{{ .StagedPath }}/cc-patch"], must_succeed: false, print_stderr: false
             # Register the launchd agents after install and upgrade so each upgrade
-            # re-points them at the new versioned Caskroom binary.
-            system_command "#{staged_path}/cc-patch", args: ["install-daemons"], must_succeed: false
+            # re-points them at the new versioned Caskroom binary. Install steps run in
+            # Homebrew's sandbox, which points HOME at a scratch directory and denies
+            # writes outside the Caskroom, so hand install-daemons the real home and the
+            # three directories it writes.
+            run "{{ .StagedPath }}/cc-patch", args: ["install-daemons"], must_succeed: false,
+                env: { "HOME" => "/Users/{{ "{{user}}" }}" },
+                writable_paths: [".daemonkit", "Library/LaunchAgents", "Library/Logs/cc-patch"], writable_base: :home
           end
 
 release:
