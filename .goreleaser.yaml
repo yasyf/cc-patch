@@ -71,15 +71,17 @@ homebrew_casks:
     homepage: https://github.com/yasyf/cc-patch
     description: Fast mode for Claude Code's delegated agents, re-applied automatically on every update.
     hooks:
+      pre:
+        install_steps: |
+          on_macos do
+            # Strip quarantine before the binary is linked: an exec that wins the race against a
+            # postflight strip raises a Gatekeeper prompt that holds every later exec until answered.
+            # must_succeed: false because xattr -d exits 1 when the attribute is absent.
+            run "/usr/bin/xattr", args: ["-d", "com.apple.quarantine", "{{ .StagedPath }}/cc-patch"], must_succeed: false, print_stderr: false
+          end
       post:
         install_steps: |
           on_macos do
-            # Strip quarantine BEFORE the first exec below, never after: Homebrew marks
-            # every cask download com.apple.quarantine, and a quarantined binary's first
-            # exec blocks on a syspolicyd assessment that never returns where syspolicyd
-            # is wedged — which would hang this postflight, and so `brew install` itself.
-            # must_succeed: false because xattr -d exits 1 when the attribute is absent.
-            run "/usr/bin/xattr", args: ["-d", "com.apple.quarantine", "{{ .StagedPath }}/cc-patch"], must_succeed: false, print_stderr: false
             # Register the launchd agents after install and upgrade so each upgrade
             # re-points them at the new versioned Caskroom binary. Install steps run in
             # Homebrew's sandbox, which points HOME at a scratch directory and denies
