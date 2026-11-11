@@ -156,6 +156,15 @@ holds a length and a precomputed hash alongside the characters, so cc-patch rewr
 all three and pads back out to the width the old string occupied, refusing a
 replacement too wide for it. Reach for this when the JS source spelling a literal is
 retained but dead: the pool is deduplicated, so its entry is what actually runs.
+On a binary built with `bun build --compile --bytecode`, each bundled module runs
+JavaScriptCore bytecode compiled from its source, so a `drop` or `replace` site in
+that source changes nothing on its own. Applying the site also clears the module's
+bytecode pointer and precomputed source hash in Bun's module table, and Bun then
+compiles that one module from the edited source at startup. `status` reports a site
+whose bytes are in place but whose module still runs bytecode as `shadowed`. Keep
+the edit inside function bodies: Bun's prelinked module graph still supplies the
+module's imports and exports. A pool site does not reach a module compiled from
+source, which reads its literals from the source text instead.
 An optional derive adds Go RE2 patterns that re-locate the sites after an update
 renames the minified locals. `find` selects a capture group by name or index, and
 each site then takes either `drop`, another group to blank, or `replace`, a

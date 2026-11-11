@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`drop` and `replace` sites take effect on bytecode builds.** Claude Code
+  2.1.322 runs each bundled module from JavaScriptCore bytecode, so a site that
+  edits a module's retained source reported `patched` and changed nothing. With
+  its write call edited out, `/autocompact 300k` still wrote
+  `autoCompactWindow: 300000` to `settings.json`. Every `worktreeguard` site
+  applied to 2.1.322 sits in a bytecode-backed module and was inert the same
+  way. Applying a site now also zeroes its module's bytecode pointer and
+  precomputed source hash in Bun's module table. Bun reads an empty pointer as
+  "no bytecode" and compiles that module from the edited source, and with the
+  write call edited out, `/autocompact` no longer creates `settings.json`.
+  Moving the 5.5 MB main chunk onto its source adds about 100 ms to startup.
+- `status` reports a site whose bytes are in place but whose module still runs
+  bytecode as `shadowed` instead of `patched`. The next `apply` moves the module
+  onto its source. Reverting a retired patch restores the source bytes and moves
+  no module.
 - The Homebrew cask strips quarantine and reruns `install-daemons` from a `postflight_steps` stanza instead of the Ruby `postflight` block Homebrew 7 deprecated, so `brew upgrade` no longer warns. Install steps run in Homebrew's sandbox, so the step passes the real `HOME` and allows writes to `~/.daemonkit`, `~/Library/LaunchAgents`, and `~/Library/Logs/cc-patch`.
 
 ## [0.21.0] - 2026-10-16

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/yasyf/cc-patch/internal/bungraph"
 	"github.com/yasyf/cc-patch/internal/macho"
 )
 
@@ -41,6 +43,10 @@ const (
 	StateUnpatched
 	// StateMissing means neither Find nor Replace is present (drift).
 	StateMissing
+	// StateShadowed means Replace is present in a module's source but the
+	// module still runs the bytecode compiled from its original source, so the
+	// edit is inert until Apply moves the module onto its source.
+	StateShadowed
 )
 
 func (s State) String() string {
@@ -51,6 +57,8 @@ func (s State) String() string {
 		return "unpatched"
 	case StateMissing:
 		return "missing"
+	case StateShadowed:
+		return "shadowed"
 	default:
 		return "unknown"
 	}
@@ -80,9 +88,10 @@ func (r Result) Patched() bool {
 }
 
 type resolved struct {
-	sub    Substitution
-	state  State
-	offset int64
+	sub      Substitution
+	state    State
+	offset   int64
+	releases []bungraph.Write
 }
 
 func evaluate(data []byte, seg macho.Segment, subs []Substitution) ([]resolved, error) {
@@ -90,6 +99,10 @@ func evaluate(data []byte, seg macho.Segment, subs []Substitution) ([]resolved, 
 		return nil, fmt.Errorf("segment %s [%d,%d) outside file of %d bytes", seg.Name, seg.Offset, seg.Offset+seg.Size, len(data))
 	}
 	window := data[seg.Offset : seg.Offset+seg.Size]
+	graph, err := bungraph.Parse(window)
+	if err != nil {
+		return nil, fmt.Errorf("segment %s: %w", seg.Name, err)
+	}
 	out := make([]resolved, len(subs))
 	for i, sub := range subs {
 		if len(sub.Find) != len(sub.Replace) {
@@ -99,9 +112,12 @@ func evaluate(data []byte, seg macho.Segment, subs []Substitution) ([]resolved, 
 		switch {
 		case nFind == 1:
 			rel := bytes.Index(window, sub.Find)
-			out[i] = resolved{sub: sub, state: StateUnpatched, offset: seg.Offset + int64(rel)}
+			out[i] = resolved{sub: sub, state: StateUnpatched, offset: seg.Offset + int64(rel), releases: releases(graph, seg, rel, rel+len(sub.Find))}
 		case nFind == 0 && bytes.Contains(window, sub.Replace):
-			out[i] = resolved{sub: sub, state: StatePatched}
+			out[i] = resolved{sub: sub, state: StatePatched, releases: patchedReleases(graph, seg, window, sub.Replace)}
+			if len(out[i].releases) > 0 {
+				out[i].state = StateShadowed
+			}
 		case nFind == 0:
 			out[i] = resolved{sub: sub, state: StateMissing}
 		default:
@@ -109,6 +125,57 @@ func evaluate(data []byte, seg macho.Segment, subs []Substitution) ([]resolved, 
 		}
 	}
 	return out, nil
+}
+
+func releases(graph bungraph.Graph, seg macho.Segment, start, end int) []bungraph.Write {
+	m, ok := graph.Owner(start, end)
+	if !ok {
+		return nil
+	}
+	return located(seg, bungraph.Release(m))
+}
+
+func patchedReleases(graph bungraph.Graph, seg macho.Segment, window, replace []byte) []bungraph.Write {
+	var owner bungraph.Module
+	for rel := range occurrences(window, replace) {
+		m, ok := graph.Owner(rel, rel+len(replace))
+		if !ok || (owner.End > 0 && m.BytecodeAt != owner.BytecodeAt) {
+			return nil
+		}
+		owner = m
+	}
+	return located(seg, bungraph.Release(owner))
+}
+
+func inactive(rs []resolved) []resolved {
+	out := make([]resolved, len(rs))
+	for i, r := range rs {
+		r.releases = nil
+		if r.state == StateShadowed {
+			r.state = StatePatched
+		}
+		out[i] = r
+	}
+	return out
+}
+
+func located(seg macho.Segment, writes []bungraph.Write) []bungraph.Write {
+	for i := range writes {
+		writes[i].At += int(seg.Offset)
+	}
+	return writes
+}
+
+func occurrences(window, needle []byte) iter.Seq[int] {
+	return func(yield func(int) bool) {
+		for at := 0; ; {
+			j := bytes.Index(window[at:], needle)
+			if j < 0 || !yield(at+j) {
+				return
+			}
+			at += j + 1
+		}
+	}
 }
 
 func statuses(rs []resolved) []SiteStatus {
@@ -157,7 +224,20 @@ func Status(binary, segName string, subs []Substitution) (Result, error) {
 // the live binary untouched. It backs up the pristine original before the first
 // write, re-signs a patched binary with an invalid signature, and returns
 // ErrDrift when any site is missing.
+//
+// A site inside a Bun module's source also moves that module off the bytecode
+// compiled from its original source.
 func Apply(ctx context.Context, binary, backup, segName string, subs []Substitution) (Result, error) {
+	return apply(ctx, binary, backup, segName, subs, true)
+}
+
+// Undo is Apply for substitutions that restore original bytes: it moves no
+// module off bytecode, since the restored source matches what was compiled.
+func Undo(ctx context.Context, binary, backup, segName string, subs []Substitution) (Result, error) {
+	return apply(ctx, binary, backup, segName, subs, false)
+}
+
+func apply(ctx context.Context, binary, backup, segName string, subs []Substitution, activate bool) (Result, error) {
 	src, err := os.Open(binary)
 	if err != nil {
 		return Result{}, fmt.Errorf("open binary %q: %w", binary, err)
@@ -175,13 +255,16 @@ func Apply(ctx context.Context, binary, backup, segName string, subs []Substitut
 	if err != nil {
 		return Result{}, err
 	}
+	if !activate {
+		rs = inactive(rs)
+	}
 	var missing []int
 	var pending []resolved
 	for i, r := range rs {
 		switch r.state {
 		case StateMissing:
 			missing = append(missing, i)
-		case StateUnpatched:
+		case StateUnpatched, StateShadowed:
 			pending = append(pending, r)
 		}
 	}
@@ -324,9 +407,17 @@ func writeSites(clone string, pending []resolved, perm os.FileMode) error {
 		return fmt.Errorf("open clone %q: %w", clone, err)
 	}
 	for _, r := range pending {
-		if _, err := f.WriteAt(r.sub.Replace, r.offset); err != nil {
-			_ = f.Close()
-			return fmt.Errorf("write site at offset %d of %q: %w", r.offset, clone, err)
+		if r.state == StateUnpatched {
+			if _, err := f.WriteAt(r.sub.Replace, r.offset); err != nil {
+				_ = f.Close()
+				return fmt.Errorf("write site at offset %d of %q: %w", r.offset, clone, err)
+			}
+		}
+		for _, w := range r.releases {
+			if _, err := f.WriteAt(w.Data, int64(w.At)); err != nil {
+				_ = f.Close()
+				return fmt.Errorf("release module at offset %d of %q: %w", w.At, clone, err)
+			}
 		}
 	}
 	if err := f.Close(); err != nil {
