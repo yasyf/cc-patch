@@ -67,7 +67,7 @@ func mapping(p procs.Process) string {
 }
 
 func summarize(r binpatch.Result) string {
-	patched, unpatched, missing := 0, 0, 0
+	patched, unpatched, missing, shadowed := 0, 0, 0, 0
 	for _, s := range r.Sites {
 		switch s.State {
 		case binpatch.StatePatched:
@@ -76,11 +76,15 @@ func summarize(r binpatch.Result) string {
 			unpatched++
 		case binpatch.StateMissing:
 			missing++
+		case binpatch.StateShadowed:
+			shadowed++
 		}
 	}
 	switch {
 	case missing > 0:
 		return "drifted"
+	case shadowed > 0 && unpatched == 0:
+		return "shadowed (source patched, bytecode still runs; apply to activate)"
 	case unpatched == 0:
 		return "patched"
 	case patched == 0:

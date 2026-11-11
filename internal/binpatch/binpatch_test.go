@@ -8,11 +8,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"golang.org/x/sys/unix"
 
+	"github.com/yasyf/cc-patch/internal/bungraph"
 	"github.com/yasyf/cc-patch/internal/macho"
 )
 
@@ -580,4 +582,91 @@ func TestBackupAndRestoreRoundTrip(t *testing.T) {
 	if _, err := os.Stat(backup); !os.IsNotExist(err) {
 		t.Errorf("backup should be removed after restore, stat err = %v", err)
 	}
+}
+
+func bunWindow(t *testing.T, sources []string, bytecode []bool) []byte {
+	t.Helper()
+	var payload []byte
+	starts := make([]int, len(sources))
+	for i, s := range sources {
+		starts[i] = len(payload)
+		payload = append(payload, s...)
+	}
+	table := len(payload)
+	for i, s := range sources {
+		record := make([]byte, 52)
+		put(record, 8, starts[i])
+		put(record, 12, len(s))
+		if bytecode[i] {
+			binary.LittleEndian.PutUint32(record[24:], 1)
+			binary.LittleEndian.PutUint32(record[28:], 1)
+		}
+		payload = append(payload, record...)
+	}
+	for range sources {
+		payload = binary.LittleEndian.AppendUint32(payload, 0x1234)
+	}
+	offsets := make([]byte, 32)
+	put(offsets, 8, table)
+	put(offsets, 12, len(sources)*52)
+	binary.LittleEndian.PutUint32(offsets[28:], 1<<5)
+	payload = append(append(payload, offsets...), "\n---- Bun! ----\n"...)
+	return append(binary.LittleEndian.AppendUint64(nil, uint64(len(payload))), payload...)
+}
+
+func TestEvaluateReleasesBytecodeModules(t *testing.T) {
+	data := bunWindow(t, []string{"if(gate)run();", "if(open)run();", "keep(x);"}, []bool{true, true, false})
+	seg := macho.Segment{Name: "__BUN", Offset: 0, Size: int64(len(data))}
+	graph, err := bungraph.Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate, open, keep := graph.Modules[0], graph.Modules[1], graph.Modules[2]
+	released := func(m bungraph.Module, bytecode bool) []bungraph.Write {
+		var out []bungraph.Write
+		if bytecode {
+			out = append(out, bungraph.Write{At: m.BytecodeAt, Data: make([]byte, 8)})
+		}
+		return append(out, bungraph.Write{At: m.HashAt, Data: make([]byte, 4)})
+	}
+	tests := []struct {
+		name     string
+		sub      Substitution
+		state    State
+		releases []bungraph.Write
+	}{
+		{"unpatched in a bytecode module", Substitution{Find: []byte("if(gate)"), Replace: []byte("if(0   )")}, StateUnpatched, released(gate, true)},
+		{"unpatched in a source module", Substitution{Find: []byte("keep(x)"), Replace: []byte("drop(x)")}, StateUnpatched, released(keep, false)},
+		{"patched but shadowed by bytecode", Substitution{Find: []byte("if(shut)"), Replace: []byte("if(open)")}, StateShadowed, released(open, true)},
+		{"patched bytes recurring across modules", Substitution{Find: []byte("walk();"), Replace: []byte("run();")}, StatePatched, nil},
+		{"outside every module", Substitution{Find: []byte("Bun!"), Replace: []byte("Bum!")}, StateUnpatched, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := evaluate(data, seg, []Substitution{tt.sub})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got[0].state != tt.state || !reflect.DeepEqual(got[0].releases, tt.releases) {
+				t.Errorf("evaluate = %v %+v, want %v %+v", got[0].state, got[0].releases, tt.state, tt.releases)
+			}
+		})
+	}
+}
+
+func TestInactiveLeavesModulesOnBytecode(t *testing.T) {
+	data := bunWindow(t, []string{"if(open)run();"}, []bool{true})
+	seg := macho.Segment{Name: "__BUN", Offset: 0, Size: int64(len(data))}
+	rs, err := evaluate(data, seg, []Substitution{{Find: []byte("if(shut)"), Replace: []byte("if(open)")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := inactive(rs)
+	if got[0].state != StatePatched || got[0].releases != nil {
+		t.Errorf("inactive = %v %+v, want patched with no releases", got[0].state, got[0].releases)
+	}
+}
+
+func put(b []byte, at, v int) {
+	binary.LittleEndian.PutUint32(b[at:], uint32(v)) //nolint:gosec // fixture offsets are small
 }

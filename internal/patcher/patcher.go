@@ -90,7 +90,7 @@ func Revert(ctx context.Context, inst claude.Install, p registry.Patch) (Outcome
 	} else if ok {
 		sites, derived = stored, true
 	}
-	res, err := binpatch.Apply(ctx, inst.Binary, inst.Backup(), p.SegmentName, undo(registry.Substitutions(sites)))
+	res, err := binpatch.Undo(ctx, inst.Binary, inst.Backup(), p.SegmentName, undo(registry.Substitutions(sites)))
 	if err != nil {
 		return Outcome{}, fmt.Errorf("revert %s: %w", p.ID, err)
 	}
