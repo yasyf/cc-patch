@@ -638,7 +638,7 @@ func TestEvaluateReleasesBytecodeModules(t *testing.T) {
 		{"unpatched in a bytecode module", Substitution{Find: []byte("if(gate)"), Replace: []byte("if(0   )")}, StateUnpatched, released(gate, true)},
 		{"unpatched in a source module", Substitution{Find: []byte("keep(x)"), Replace: []byte("drop(x)")}, StateUnpatched, released(keep, false)},
 		{"patched but shadowed by bytecode", Substitution{Find: []byte("if(shut)"), Replace: []byte("if(open)")}, StateShadowed, released(open, true)},
-		{"patched bytes recurring across modules", Substitution{Find: []byte("walk();"), Replace: []byte("run();")}, StatePatched, nil},
+		{"patched bytes recurring across modules", Substitution{Find: []byte("nap();"), Replace: []byte("run();")}, StatePatched, nil},
 		{"outside every module", Substitution{Find: []byte("Bun!"), Replace: []byte("Bum!")}, StateUnpatched, nil},
 	}
 	for _, tt := range tests {
